@@ -125,16 +125,26 @@ route to the spec's "224x224 RGB with data augmentation" requirement. Image size
 by this assignment.
 
 **Consequences:**
-- **Wheel split is a real trap:** `tensorflow-cpu` has no macOS arm64 wheel and `tensorflow-metal`
-  is macOS-only. So `requirements.txt` carries `tensorflow` (plus optional `tensorflow-metal` for
-  local speed) while `requirements-serve.txt` carries `tensorflow-cpu` for the image. Keep the
-  **minor version aligned** across both or `model.h5` may fail to load.
-- Verify the exact available wheels on Day 1 *before* pinning, and verify `model.h5` loads inside
-  the container on Day 10.
+- **RESOLVED on Day 1 by measurement, not assumption.** Findings:
+  - macOS arm64 resolves `tensorflow` to **2.21.0**, but **`tensorflow-cpu` stops at 2.20.0** on
+    PyPI (verified: `pip download tensorflow-cpu==2.21.0 --platform manylinux2014_x86_64` fails;
+    available versions end at 2.20.0). Left alone, this guarantees a train/serve skew.
+  - **Both sides are therefore pinned to `2.20.0`** — `tensorflow==2.20.0` in `requirements.txt`
+    (macOS arm64 wheel confirmed available) and `tensorflow-cpu==2.20.0` in
+    `requirements-serve.txt`. Audit check 14 enforces the alignment; check 15 asserts the
+    `tensorflow-cpu` version actually exists.
+  - TF 2.20.0 ships **Keras 3.15.1**, which marks `.h5` legacy and prints a warning. Probed the
+    round-trip explicitly: `.h5` and `.keras` both save, load, and reproduce predictions
+    **identically** (`np.allclose` at 1e-6). Since the spec names `.h5` and Guardrail Rule 4 says
+    match the rubric's vocabulary, **`.h5` stays the artifact format**; the warning is suppressed in
+    `pytest.ini` with a comment pointing here.
+  - `mlflow==3.15.1` constrains pandas to 2.x — pip silently downgraded 3.0.5 → **2.3.3**. Pinned
+    explicitly so it's a decision rather than a resolver accident.
+  - Pillow is **no longer a TensorFlow dependency**; it has to be requested explicitly.
 - Expect a serving image over 1GB. Document the number rather than fighting it. If it becomes a
   problem, the fallback is exporting to TFLite or SavedModel and serving without full TF — noted
   here so it isn't re-derived later.
-- TF's memory appetite affects k8s resource limits (Day 15) and startup time affects probe
+- TF's memory appetite affects k8s resource limits (Day 8) and startup time affects probe
   `initialDelaySeconds`.
 
 ---
