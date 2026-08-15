@@ -27,7 +27,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -463,7 +463,7 @@ def _33():
 def _34():
     if not exists("data/corrupt_files.txt"):
         return (NOTYET, "audit not run yet")
-    n = len([l for l in read("data/corrupt_files.txt").splitlines() if l.strip()])
+    n = len([x for x in read("data/corrupt_files.txt").splitlines() if x.strip()])
     return (PASS, f"audit report present ({n} corrupt files listed)")
 
 
@@ -588,7 +588,7 @@ def _46():
 
 @check(47, "PREPROCESS", "Corrupt files excluded from the manifests", 2)
 def _47():
-    corrupt = {l.strip() for l in read("data/corrupt_files.txt").splitlines() if l.strip()}
+    corrupt = {x.strip() for x in read("data/corrupt_files.txt").splitlines() if x.strip()}
     if not corrupt:
         return (NOTYET, "no corrupt list (run the Day 1 audit)")
     listed = set()
@@ -596,7 +596,7 @@ def _47():
         for r in rows(f"data/processed/{s}.csv"):
             listed.add(next(iter(r.values())))
     names = {Path(c).name for c in corrupt}
-    leaked = [n for n in names if any(n in l for l in listed)]
+    leaked = [n for n in names if any(n in entry for entry in listed)]
     return ok(not leaked, f"{len(corrupt)} excluded",
               f"CORRUPT FILES IN MANIFESTS: {len(leaked)}")
 

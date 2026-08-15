@@ -1,0 +1,69 @@
+# DVC pipeline (M1 — data & pipeline versioning).
+#
+# Two stages mirroring the plan. `dvc repro` is the reproducible entry point;
+# `dvc dag` renders the graph for the report/video.
+#
+# The raw dataset itself is tracked separately with `dvc add data/raw` once the
+# real Kaggle download lands (it is not a stage output — nothing in this repo
+# *produces* it). Run:
+#
+#     bash scripts/download.sh
+#     python -m src.data          # writes data/corrupt_files.txt
+#     dvc add data/raw
+#     dvc repro
+#     dvc push
+#
+# Note on `always_changed` for preprocess: its real dependency is the contents of
+# data/raw, which DVC tracks via data/raw.dvc. Listing data/raw here as well
+# would double-track it, so the dependency is expressed through the .dvc file
+# plus the code and the corrupt-file report.
+
+stages:
+  preprocess:
+    cmd: python -m src.preprocess
+    deps:
+      - src/data.py
+      - src/preprocess.py
+      - data/corrupt_files.txt
+    outs:
+      - data/processed/train.csv
+      - data/processed/val.csv
+      - data/processed/test.csv
+
+  train:
+    cmd: python -m src.train --model transfer
+    deps:
+      - src/model.py
+      - src/train.py
+      - data/processed/train.csv
+      - data/processed/val.csv
+      - data/processed/test.csv
+    outs:
+      - models/model.h5:
+          cache: false      # committed to git as a deliverable (ADR-004)
+    metrics:
+      - reports/metrics.json:
+          cache: false
+    plots:
+      - reports/figures/loss_curves.png:
+          cache: false
+      - reports/figures/accuracy_curves.png:
+          cache: false
+      - reports/figures/confusion_matrix.png:
+          cache: false
+
+  cross_validate:
+    cmd: python -m src.cross_validate
+    deps:
+      - src/model.py
+      - src/cross_validate.py
+      - data/processed/train.csv
+      - data/processed/val.csv
+    metrics:
+      - reports/cv_results.csv:
+          cache: false
+    plots:
+      - reports/figures/cv_comparison.png:
+          cache: false
+      - reports/figures/cv_fold_scores.png:
+          cache: false

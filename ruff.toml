@@ -1,8 +1,10 @@
 # Ruff config for local linting and CI (M3).
 #
-# Default rule set (pyflakes F + a curated pycodestyle E subset) plus import
-# sorting, which matters here because train/serve share modules and a stray
-# import order change produces noisy diffs.
+# `select` is EXPLICIT on purpose. Relying on ruff's default rule set turned out
+# to be unstable: ruff 0.16 enables a broader default than earlier versions, so
+# an unchanged codebase can start failing CI purely because the linter moved.
+# Naming the rule families keeps the lint surface reproducible, which is the
+# whole point of pinning ruff==0.16.3 in requirements.txt.
 #
 # Notebooks are exploratory deliverables whose cell structure trips import-order
 # checks, so they are linted by hand, not by CI.
@@ -11,4 +13,24 @@ line-length = 100
 extend-exclude = ["*.ipynb", "mlruns", ".venv", ".dvc", "data"]
 
 [lint]
-extend-select = ["I"]   # isort: keep imports ordered across src/, api/, tests/
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (unused imports/names — the ones that are always real)
+    "I",   # isort: keep imports ordered across src/, api/, tests/
+    "UP",  # pyupgrade: keep syntax current for the pinned Python
+    "B",   # bugbear: mutable defaults, loop-variable capture, and similar traps
+]
+
+# Deliberately NOT selected, with reasons:
+#   BLE001 (blind except) — src/preprocess.py::load_image and
+#          src/data.py::audit_images must catch *anything* Pillow raises and
+#          convert it to a clean ValueError; scripts/daily_audit.py must never
+#          crash on a malformed artifact. Blind catches are the design there.
+#   S110/S112 (try-except-pass/continue) — same reason, in the audit's tolerant
+#          CSV parsing.
+#   FURB/PLW/SIM/RUF — largely stylistic; excluded to keep CI signal high.
+
+[lint.per-file-ignores]
+# Test files legitimately re-import and shadow for fixtures.
+"tests/*" = ["E501"]
