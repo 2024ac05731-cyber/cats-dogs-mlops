@@ -487,14 +487,21 @@ def _37():
               f"{len(found)} .dvc file(s)", "no .dvc files and no dvc.yaml outs")
 
 
-@check(38, "DATA", "dvc.yaml declares pipeline stages", 2)
+@check(38, "DATA", "dvc.yaml declares pipeline stages", 3)
 def _38():
+    """Activates on day 3, not day 2.
+
+    The `train` stage cannot exist until src/train.py does, and declaring a stage
+    whose script is missing breaks `dvc repro` outright — so requiring two stages
+    on day 2 would push toward writing a broken manifest to satisfy an audit.
+    """
     y = read("dvc.yaml")
     if not y:
         return (NOTYET, "dvc.yaml not written yet")
-    have = [s for s in ("preprocess", "train") if re.search(rf"^\s+{s}\s*:", y, re.M)]
+    have = [s for s in ("preprocess", "train", "cross_validate")
+            if re.search(rf"^\s+{s}\s*:", y, re.MULTILINE)]
     return ok(len(have) >= 2, f"stages: {', '.join(have)}",
-              f"only found: {have or 'none'} — want preprocess + train")
+              f"only found: {have or 'none'} — want at least preprocess + train")
 
 
 @check(39, "DATA", "dvc.lock committed", 2)

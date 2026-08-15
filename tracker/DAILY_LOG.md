@@ -160,3 +160,77 @@ context, and (2) it gives raw material for the demo video narration and for any 
   manifests, augmentation, 3 EDA figures.
 
 **Commits:** `1437337`
+
+---
+
+### 2026-08-15 — Day 2 (data pipeline, preprocessing, EDA)
+
+**Time spent:** ~3 h
+**Sub-tasks completed:** Day 1 code half + all of Day 2 except the notebook execution pass
+**Status at end of day:** ahead on code, blocked on two external items
+
+**What I did:**
+- `src/data.py` — canonical constants defined once; `find_image_root()` locates class dirs by name
+  at any depth (the archive has been republished in more than one shape, so hard-coding
+  `PetImages/Cat` would have been fragile); two-pass corrupt audit.
+- `scripts/download.sh` — dual path: Kaggle API, **or** a local archive argument, because kaggle.com
+  reachability on this network is still unconfirmed. Error messages map 403/401/proxy to their
+  actual causes.
+- `src/preprocess.py` — the shared train/serve seam. `load_image()` forces RGB and raises
+  `ValueError` so the API can return a clean 422. Stratified 80/10/10 manifests exclude corrupt files
+  at build time.
+- `src/model.py` — baseline CNN (242k params) and MobileNetV2 transfer (frozen base, 1,281
+  trainable). Both uncompiled by design so CV can recompile per fold (ADR-003).
+- `scripts/make_fixtures.py` — synthetic dataset + 7 test fixtures including 5 deliberate edge cases
+  (truncated, zero-byte, greyscale, RGBA, not-an-image). This is what lets the pipeline be verified
+  before the real download, and what lets CI run without `data/`.
+- `src/eda.py` + `notebooks/01_eda.ipynb` — 3 figures, logic in the module, notebook as thin driver.
+- DVC initialised, local remote configured, `preprocess` stage reproducible (`dvc status` clean).
+
+**What worked:**
+- The synthetic-dataset approach paid off immediately: 122 candidates → 120 usable → 2 corrupt
+  caught, splits 80.0/9.2/10.8%, disjoint, batch `(4,224,224,3)` float32. The whole M1 data path is
+  verified without a single real image.
+- Verifying rather than assuming caught **three real bugs** (below).
+
+**What didn't / blockers:**
+- **Augmentation broke the [0,1] contract.** `RandomContrast`/`RandomZoom` produced max 1.02, but
+  `build_transfer_model`'s Rescaling layer assumes clean [0,1] when mapping to MobileNetV2's [-1,1].
+  Added a clip layer; range is now exactly [0.171, 1.000], visible in `augmentation_grid.png`.
+- **DVC ran Apple's system Python 2.7.** `cmd: python -m ...` resolves against PATH, and an
+  unactivated shell resolves `python` to 2.7, which dies with a SyntaxError on modern type hints —
+  *and DVC had already deleted the stage outputs before the failed re-run*. Documented prominently in
+  the README quickstart; the audit's dvc check now prepends `.venv/bin` to PATH.
+- **ruff 0.16's default rule set is broader than earlier versions**, so an unchanged codebase could
+  start failing CI purely because the linter moved. `ruff.toml` now pins an explicit `select` list.
+- **Two of my own audit checks were wrong**, not the code: #46 compared class balance to a flat 2%
+  tolerance when an 11-row val split can only express 9.1% steps (now `max(2%, 100/n_smallest)`); #38
+  demanded a `train` DVC stage on day 2, which would have meant writing a manifest referencing a
+  non-existent script (now day 3).
+- **MobileNetV2 ImageNet weights cannot be downloaded here** — same proxy that blocks kaggle.com.
+  Added an actionable error plus a `weights=None` escape hatch; architecture verified that way.
+- **Notebook cell outputs are not populated** — this machine's security policy blocks Jupyter kernel
+  socket binds, so `nbconvert --execute` fails even outside the sandbox. Every cell's logic was
+  verified by running it as plain Python. **Open: one execute pass needed on an unrestricted machine.**
+
+**Decisions made:**
+- ADR-009 (baseline CNN design) and ADR-010 (augmentation policy) are captured in the module
+  docstrings; still to be written up formally in `DECISIONS.md`.
+
+**Evidence captured:**
+- `class_balance.png`, `sample_grid.png`, `augmentation_grid.png`. Note these are from the
+  **synthetic** fixture and must be regenerated from the real dataset before submission.
+
+**Guardrail check:**
+- Rule 6 (demonstrate, don't assert) applied to my own tooling: every bug above was found by running
+  the thing, not by reading it.
+- Audit at end of day: **40 pass · 1 fail · 57 not-yet**. The single failure is check 4 (git remote),
+  blocked on repo creation.
+
+**Tomorrow's plan (Day 3):**
+- Blocked-on-user first: create the GitHub repo, verify Kaggle connectivity, then real download +
+  audit, and regenerate the EDA figures from real data.
+- Then `src/train.py`, both architectures trained, training figures, `models/model.h5` +
+  metadata, and **measure per-epoch wall-clock to size the Day 4 CV protocol**.
+
+**Commits:** `a286432`, `1e5f0a1`, `4f8c2d3` (see `git log`)
