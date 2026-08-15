@@ -1,0 +1,14 @@
+# Ruff config for local linting and CI (M3).
+#
+# Default rule set (pyflakes F + a curated pycodestyle E subset) plus import
+# sorting, which matters here because train/serve share modules and a stray
+# import order change produces noisy diffs.
+#
+# Notebooks are exploratory deliverables whose cell structure trips import-order
+# checks, so they are linted by hand, not by CI.
+target-version = "py311"
+line-length = 100
+extend-exclude = ["*.ipynb", "mlruns", ".venv", ".dvc", "data"]
+
+[lint]
+extend-select = ["I"]   # isort: keep imports ordered across src/, api/, tests/

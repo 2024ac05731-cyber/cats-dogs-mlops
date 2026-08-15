@@ -1,0 +1,58 @@
+# Full development + training stack for cats-dogs-mlops (M1/M2/M3).
+#
+# Every version pinned to what actually resolved on Python 3.11 / macOS arm64 on
+# 2026-08-15, verified by `scripts/daily_audit.py` check 16 (installed versions
+# must match these pins).
+#
+# The inference-only subset lives in requirements-serve.txt and goes into the
+# Docker image. CRITICAL (ADR-002): tensorflow, numpy, pillow, and h5py pins
+# must stay IDENTICAL across both files, or the container can fail to load
+# models/model.h5 or silently shift predictions. Audit check 14 enforces this.
+
+# --- Deep learning ---
+# Pinned to 2.20.0 deliberately, NOT the latest 2.21.0: `tensorflow-cpu` (needed
+# for the linux/amd64 serving image) stops at 2.20.x, so 2.21 would guarantee a
+# train/serve version skew. Verified against PyPI on Day 1.
+tensorflow==2.20.0
+keras==3.15.1
+
+# --- Core numerics / data ---
+numpy==2.4.6
+# pandas is held at 2.x by mlflow 3.15's constraints (pip resolved 3.0.5 down to
+# 2.3.3 on install). Pinned explicitly so this is a decision, not a surprise.
+pandas==2.3.3
+pillow==12.3.0
+h5py==3.14.0
+scikit-learn==1.9.0
+
+# --- Plotting (EDA, training curves, CV figures) ---
+matplotlib==3.11.1
+seaborn==0.13.2
+
+# --- Data versioning (M1) ---
+dvc==3.67.1
+
+# --- Experiment tracking (M1) ---
+mlflow==3.15.1
+
+# --- Notebooks (M1 asks for notebooks under version control) ---
+ipykernel==7.3.0
+notebook==7.6.2
+
+# --- Dataset source ---
+kaggle==2.2.4
+
+# --- API serving (M2) ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+pydantic==2.13.4
+python-json-logger==4.1.0
+prometheus-fastapi-instrumentator==8.1.0
+
+# --- Testing (M3); httpx backs FastAPI's TestClient ---
+pytest==9.1.1
+pytest-cov==7.1.0
+httpx==0.28.1
+
+# --- Linting (M3 / CI) ---
+ruff==0.16.3

@@ -1,0 +1,70 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Kaggle credentials (NEVER commit — see GUARDRAILS.md) ---
+access_token
+kaggle.json
+.kaggle/
+
+# --- Data (regenerable via scripts/download.sh; versioned by DVC) ---
+data/raw/
+data/processed/
+data/monitoring/**/*.jpg
+data/monitoring/**/*.jpeg
+data/monitoring/**/*.png
+!data/monitoring/**/labels.csv
+
+# --- DVC ---
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
+# --- Models (binary, regenerable from src/train.py) ---
+models/*.h5
+models/*.keras
+models/*.pkl
+# ...except the packaged serving model, a committed deliverable. The grader
+# cannot `dvc pull` from a local DVC remote (ADR-004), so the artifact the
+# submission zip needs must live in Git.
+!models/model.h5
+# model_metadata.json isn't matched above, so it stays tracked too.
+
+# --- MLflow local tracking store ---
+mlruns/
+mlartifacts/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Environment / secrets ---
+.env
+.envrc
+*.pem
+id_rsa*
+
+# --- Logs ---
+*.log
