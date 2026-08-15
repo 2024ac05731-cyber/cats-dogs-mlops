@@ -109,7 +109,15 @@ python -m src.data                 # counts, class balance, corrupt-image audit
 
 # 2. Preprocess: 224x224 RGB, stratified 80/10/10 manifests
 dvc repro preprocess
+python -m src.eda                  # 3 EDA figures -> reports/figures/
+```
 
+> **Activate the venv before running `dvc repro`.** DVC stages use bare
+> `cmd: python -m ...`, which resolves against `PATH`. Without the venv active,
+> macOS may resolve `python` to the system Python 2.7 and the stage dies with a
+> `SyntaxError` on modern type hints. `source .venv/bin/activate` first.
+
+```bash
 # 3. Train and cross-validate
 python -m src.train --model transfer
 python -m src.cross_validate       # -> reports/cv_results.csv + CV figures

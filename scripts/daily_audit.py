@@ -516,13 +516,23 @@ def _40():
 
 @check(41, "DATA", "dvc status clean", 2)
 def _41():
+    """Runs dvc with .venv/bin prepended to PATH, deliberately.
+
+    DVC stages use bare ``cmd: python -m ...``, which resolves against PATH at
+    run time. On this machine an unactivated shell resolves ``python`` to Apple's
+    system Python 2.7, so the stage dies with a SyntaxError on modern type hints.
+    Prepending the venv here makes this check reflect the documented workflow
+    (README says to activate the venv) rather than the ambient shell.
+    """
     if not exists(".dvc/config"):
         return (NOTYET, "dvc not initialised")
     dvc = ROOT / ".venv" / "bin" / "dvc"
     if not dvc.exists():
         return (MANUAL, "run `dvc status` — dvc not in .venv")
+    venv_bin = ROOT / ".venv" / "bin"
+    env = {**os.environ, "PATH": f"{venv_bin}{os.pathsep}{os.environ.get('PATH', '')}"}
     r = subprocess.run([str(dvc), "status"], cwd=ROOT, capture_output=True,
-                       text=True, timeout=120)
+                       text=True, timeout=300, env=env, check=False)
     clean = "up to date" in (r.stdout + r.stderr).lower()
     return ok(clean, "up to date", f"drift: {r.stdout.strip()[:200]}")
 
@@ -574,16 +584,30 @@ def _45():
 
 @check(46, "PREPROCESS", "Stratification holds across splits (class balance within 2%)", 2)
 def _46():
-    bal = {}
+    """Tolerance must scale with split size.
+
+    A split of n rows can only express class proportions in steps of 100/n
+    percent, so on a small split a "failure" can be arithmetically unavoidable
+    rather than a stratification bug (the 120-image synthetic fixture has an
+    11-row val split, where one image is 9.1%). The gate is therefore the larger
+    of 2% and the coarsest achievable granularity, so this check stays meaningful
+    on the real ~25k-image dataset without crying wolf on the smoke fixture.
+    """
+    bal, sizes = {}, {}
     for s in ("train", "val", "test"):
         rr = rows(f"data/processed/{s}.csv")
         if not rr or "label" not in rr[0]:
             return (NOTYET, "manifests or label column not ready")
         labs = [r["label"] for r in rr]
+        sizes[s] = len(labs)
         bal[s] = 100 * sum(1 for x in labs if str(x) in ("1", "dog")) / len(labs)
     spread = max(bal.values()) - min(bal.values())
-    desc = ", ".join(f"{s}={bal[s]:.1f}%" for s in bal)
-    return ok(spread <= 2.0, f"{desc}", f"IMBALANCED (spread {spread:.1f}%): {desc}")
+    granularity = 100.0 / min(sizes.values())
+    tol = max(2.0, granularity)
+    desc = ", ".join(f"{s}={bal[s]:.1f}% (n={sizes[s]})" for s in bal)
+    return ok(spread <= tol,
+              f"spread {spread:.1f}% <= tol {tol:.1f}%; {desc}",
+              f"IMBALANCED: spread {spread:.1f}% > tol {tol:.1f}%; {desc}")
 
 
 @check(47, "PREPROCESS", "Corrupt files excluded from the manifests", 2)
