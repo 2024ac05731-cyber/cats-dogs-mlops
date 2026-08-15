@@ -233,4 +233,4 @@ context, and (2) it gives raw material for the demo video narration and for any 
 - Then `src/train.py`, both architectures trained, training figures, `models/model.h5` +
   metadata, and **measure per-epoch wall-clock to size the Day 4 CV protocol**.
 
-**Commits:** `a286432`, `1e5f0a1`, `4f8c2d3` (see `git log`)
+**Commits:** `a286432`, `3635ef4`, `210b949`, `daf9261`
