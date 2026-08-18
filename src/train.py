@@ -30,6 +30,12 @@ from pathlib import Path
 
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
+# MLflow 3.x refuses the filesystem tracking backend unless you opt in — and it
+# RAISES rather than warns. Without this the run trains fine and then silently
+# loses all tracking, which is M1's experiment-tracking marks. Assignment 1 hit
+# the same thing. Must be set before mlflow is imported.
+os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -60,6 +66,33 @@ PALETTE = {"train": "#30638E", "val": "#D1495B", "accent": "#EDAE49", "ink": "#0
 
 
 # --------------------------------------------------------------- evaluation
+
+def check_not_degenerate(proba: np.ndarray, y_true: np.ndarray,
+                         threshold: float = 0.5) -> str | None:
+    """Warn when the model collapses to predicting one class.
+
+    A single-class predictor scores 50% accuracy on a balanced set with
+    precision and recall of exactly 0 — numbers that look like "needs more
+    training" but actually mean the run is useless. Worth catching explicitly,
+    because the metrics alone don't announce it.
+
+    Common causes here: too few epochs for a from-scratch CNN; BatchNorm moving
+    averages not yet converged (they are only updated during training, so a
+    short run leaves inference-time statistics near their initial values); or
+    EarlyStopping restoring an under-trained epoch.
+    """
+    y_pred = (proba >= threshold).astype(int)
+    n_pred_classes = len(np.unique(y_pred))
+    if n_pred_classes > 1:
+        return None
+    only = int(y_pred[0])
+    return (
+        f"DEGENERATE MODEL: every prediction is class {only} "
+        f"({CLASS_NAMES[only]}). Accuracy {float((y_pred == y_true).mean()):.3f} "
+        f"is just the class prior, not learning. "
+        f"P(y=1) range was [{proba.min():.4f}, {proba.max():.4f}]."
+    )
+
 
 def evaluate(model, ds, y_true: np.ndarray, threshold: float = 0.5) -> tuple[dict, np.ndarray]:
     """Standard binary metrics on a dataset. Returns (metrics, probabilities)."""
@@ -282,6 +315,8 @@ def train(arch: str = "transfer", epochs: int = 10, lr: float = 1e-3,
 
     print(f"[train] fitting for up to {epochs} epochs "
           f"(train={len(tr_p):,}, val={len(va_p):,})")
+    # No shuffle= here: the tf.data pipeline already shuffles, and passing it
+    # makes Keras warn that it is ignoring the argument.
     hist = model.fit(train_ds, validation_data=val_ds, epochs=epochs,
                      callbacks=callbacks, verbose=2)
     history = {k: [float(x) for x in v] for k, v in hist.history.items()}
@@ -295,6 +330,13 @@ def train(arch: str = "transfer", epochs: int = 10, lr: float = 1e-3,
     for k, v in test_metrics.items():
         print(f"[train]   {k:10s} {v:.4f}")
 
+    degenerate = check_not_degenerate(proba, y_test)
+    if degenerate:
+        print("\n" + "!" * 78)
+        print(f"!! {degenerate}")
+        print("!! Do NOT report these metrics. Train longer, or use --model transfer.")
+        print("!" * 78)
+
     plot_history(history, arch)
     plot_confusion_matrix(y_test, (proba >= 0.5).astype(int), arch)
     plot_roc(y_test, proba, arch)
@@ -307,6 +349,8 @@ def train(arch: str = "transfer", epochs: int = 10, lr: float = 1e-3,
         "subset": subset,
     }
     metrics = {"test": test_metrics, "val": val_metrics}
+    if degenerate:
+        metrics["warning"] = degenerate
     save_artifacts(model, arch, params, metrics, timer.times, history)
 
     mean_epoch = float(np.mean(timer.times)) if timer.times else 0.0
@@ -348,7 +392,13 @@ def _log_to_mlflow(arch, params, metrics, history, epoch_times) -> None:
                 mlflow.log_artifact(str(METADATA_PATH))
         print(f"[train] logged to MLflow experiment '{EXPERIMENT_NAME}'")
     except Exception as exc:
-        print(f"[train] WARNING: MLflow logging failed ({exc}); model artifact is safe")
+        # Loud, not a passing note: MLflow tracking IS the M1 deliverable, so a
+        # silent failure here costs marks even though the model file is fine.
+        print("\n" + "!" * 78)
+        print("!! MLflow logging FAILED — M1 experiment tracking did not record this run.")
+        print(f"!! {type(exc).__name__}: {exc}")
+        print("!! The model artifact is safe, but re-run once tracking works.")
+        print("!" * 78)
 
 
 def main() -> int:

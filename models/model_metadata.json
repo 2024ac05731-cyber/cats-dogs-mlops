@@ -1,0 +1,64 @@
+{
+  "model_family": "baseline",
+  "framework": "tensorflow/keras 2.20.0",
+  "artifact_format": "h5",
+  "package_versions": {
+    "python": "3.11.13",
+    "tensorflow": "2.20.0",
+    "keras": "3.15.1",
+    "numpy": "2.4.6",
+    "pillow": "12.3.0",
+    "h5py": "3.14.0",
+    "scikit-learn": "1.9.0"
+  },
+  "random_state": 42,
+  "input_shape": [
+    224,
+    224,
+    3
+  ],
+  "preprocessing": "RGB, bilinear resize to 224x224, scaled to [0,1]",
+  "class_names": [
+    "cat",
+    "dog"
+  ],
+  "class_indices": {
+    "cat": 0,
+    "dog": 1
+  },
+  "decision_threshold": 0.5,
+  "hyperparameters": {
+    "architecture": "baseline",
+    "epochs_requested": 12,
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "optimizer": "adam",
+    "loss": "binary_crossentropy",
+    "augmentation": "flip/rotation(0.1)/zoom(0.1)/contrast(0.1), clipped to [0,1]",
+    "pretrained_weights": null,
+    "subset": 4000
+  },
+  "metrics": {
+    "test": {
+      "accuracy": 0.718,
+      "precision": 0.6798679867986799,
+      "recall": 0.824,
+      "f1": 0.7450271247739603,
+      "roc_auc": 0.8129279999999999
+    },
+    "val": {
+      "accuracy": 0.716,
+      "precision": 0.6875,
+      "recall": 0.792,
+      "f1": 0.7360594795539034,
+      "roc_auc": 0.817728
+    }
+  },
+  "training": {
+    "epochs_run": 12,
+    "mean_epoch_seconds": 40.9,
+    "total_train_seconds": 490.9,
+    "best_val_loss": 0.5218
+  },
+  "selected_by": "single train/val/test fit; see reports/cv_results.csv for the cross-validated comparison that drives model choice (ADR-005)"
+}
