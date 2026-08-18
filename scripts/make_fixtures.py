@@ -60,9 +60,19 @@ def make_fixtures() -> None:
     """Write the committed test fixtures, including deliberate edge cases."""
     FIXTURES.mkdir(parents=True, exist_ok=True)
 
-    # Small on purpose — these get committed to git.
-    _blobby((70, 0, 0), size=(96, 96), seed=1).save(FIXTURES / "cat_sample.jpg", quality=80)
-    _blobby((0, 0, 70), size=(96, 96), seed=2).save(FIXTURES / "dog_sample.jpg", quality=80)
+    # NOTE: cat_sample.jpg and dog_sample.jpg are NOT generated here. They are
+    # real 160x160 crops from the dataset's test split, committed to git.
+    #
+    # They used to be synthetic colour blobs, which was a mistake: a model trained
+    # on real pets classified both as "dog", so fixture-based tests could only
+    # assert that two probabilities differed — not that the predicted LABEL was
+    # correct. Real fixtures let tests catch an inverted class mapping.
+    #
+    # To regenerate them, see the snippet in tracker/DAILY_LOG.md (Day 6); it picks
+    # the most confidently-correct example per class from data/processed/test.csv.
+    if not (FIXTURES / "cat_sample.jpg").exists():
+        print("[fixtures] WARNING: cat_sample.jpg/dog_sample.jpg missing — these are"
+              " real dataset crops, not generated. See tracker/DAILY_LOG.md (Day 6).")
 
     # Edge case 1: greyscale (1 channel) must survive the RGB conversion.
     _blobby((0, 0, 0), size=(96, 96), seed=3).convert("L").save(FIXTURES / "greyscale.jpg")
@@ -72,7 +82,10 @@ def make_fixtures() -> None:
     rgba.save(FIXTURES / "rgba.png")
 
     # Edge case 3: truncated JPEG — the failure mode this dataset is known for.
-    good = (FIXTURES / "cat_sample.jpg").read_bytes()
+    # Derived from a generated image so it does not depend on the real fixtures.
+    _blobby((70, 0, 0), size=(96, 96), seed=1).save(FIXTURES / "_trunc_src.jpg", quality=80)
+    good = (FIXTURES / "_trunc_src.jpg").read_bytes()
+    (FIXTURES / "_trunc_src.jpg").unlink()
     (FIXTURES / "corrupt.jpg").write_bytes(good[: len(good) // 3])
 
     # Edge case 4: zero-byte file.

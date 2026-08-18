@@ -108,6 +108,28 @@ def test_predict_returns_valid_contract(client):
 
 
 @needs_model
+@pytest.mark.parametrize(("name", "expected"), [
+    ("cat_sample.jpg", "cat"),
+    ("dog_sample.jpg", "dog"),
+])
+def test_predict_returns_correct_label_for_real_fixtures(client, name, expected):
+    """End-to-end semantic check: a real cat must come back as "cat".
+
+    The fixtures are real dataset crops precisely so this assertion is possible.
+    It is the test that would catch a swapped class mapping between
+    src.data.CLASS_NAMES and the model's output convention.
+    """
+    r = client.post("/predict", files=_upload(name))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["label"] == expected, (
+        f"{name} classified as {body['label']} with "
+        f"probabilities {body['probabilities']}"
+    )
+    assert body["confidence"] > 0.7
+
+
+@needs_model
 def test_label_agrees_with_probabilities(client):
     """The reported label must be the argmax of the probabilities it reports.
 

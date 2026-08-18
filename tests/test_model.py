@@ -197,11 +197,14 @@ def test_packaged_model_loads_and_matches_metadata():
 
 
 @needs_model
-def test_packaged_model_discriminates_on_fixtures():
-    """The shipped model must not be degenerate.
+def test_packaged_model_predicts_fixture_labels_correctly():
+    """The shipped model must get the two real fixtures RIGHT, not merely differ.
 
-    A single-class predictor passes every shape assertion while being useless, so
-    this asserts the two fixture classes get different probabilities.
+    An earlier version of this test only asserted the two probabilities were
+    unequal, because the fixtures were synthetic colour blobs that a pet-trained
+    model classified both as "dog". Real fixtures make the stronger assertion
+    possible, which is what actually catches an inverted class mapping — a bug
+    that would leave every shape and range assertion passing.
     """
     import keras
 
@@ -212,8 +215,10 @@ def test_packaged_model_discriminates_on_fixtures():
         load_image(FIXTURES / "cat_sample.jpg"),
         load_image(FIXTURES / "dog_sample.jpg"),
     ])
-    p = model.predict(x, verbose=0).ravel()
-    assert not np.allclose(p[0], p[1], atol=1e-6), (
-        f"identical probabilities {p} for a cat and a dog fixture — "
-        "the model is not discriminating"
+    p_dog = model.predict(x, verbose=0).ravel()
+
+    assert p_dog[0] < 0.5, f"cat fixture predicted dog (P(dog)={p_dog[0]:.4f})"
+    assert p_dog[1] >= 0.5, f"dog fixture predicted cat (P(dog)={p_dog[1]:.4f})"
+    assert p_dog[1] - p_dog[0] > 0.5, (
+        f"classes barely separated: P(dog) cat={p_dog[0]:.4f} dog={p_dog[1]:.4f}"
     )
