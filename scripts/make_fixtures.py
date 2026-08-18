@@ -106,6 +106,17 @@ def make_synthetic(per_class: int) -> None:
     (SYNTH_ROOT / "Cat" / "cat_truncated.jpg").write_bytes(data[: len(data) // 3])
     (SYNTH_ROOT / "Dog" / "dog_empty.jpg").write_bytes(b"")
     print("[synthetic] planted 2 corrupt files (truncated + zero-byte)")
+
+    # Marker so scripts/download.sh can tell fixture data from the real dataset.
+    # Without it, download.sh's "already populated" guard counts these images and
+    # skips the real download — and worse, a training run could silently fit on
+    # synthetic images and report meaningless accuracy.
+    (SYNTH_ROOT.parent / ".synthetic").write_text(
+        "This data/raw tree holds SYNTHETIC smoke-test images from\n"
+        "scripts/make_fixtures.py --synthetic, NOT the Kaggle dataset.\n"
+        "scripts/download.sh replaces it when fetching the real data.\n"
+    )
+    print(f"[synthetic] wrote marker {(SYNTH_ROOT.parent / '.synthetic').relative_to(ROOT)}")
     print("[synthetic] NOTE: this is a pipeline smoke fixture, NOT training data.")
 
 

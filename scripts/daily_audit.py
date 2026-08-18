@@ -448,15 +448,23 @@ def _32():
     return ok(os.access(p, os.X_OK), "executable", "not executable (chmod +x)")
 
 
-@check(33, "DATA", "src/data.py records real dataset counts (not placeholders)", 1)
+@check(33, "DATA", "data/raw holds the REAL dataset, not synthetic fixtures", 3)
 def _33():
-    txt = read("src/data.py")
-    if not txt:
-        return (NOTYET, "not written yet")
-    doc = txt[:3000]
-    return ok(bool(re.search(r"\d{3,}", doc)),
-              "counts recorded in docstring",
-              "no real counts in docstring — Rule 8 (document what you found)")
+    """Day 1-2 legitimately run on synthetic smoke data; from day 3 it must be real.
+
+    Split out from the docstring-counts check because shipping metrics derived
+    from synthetic images would be a far worse failure than a thin docstring —
+    it would put fabricated accuracy in model_metadata.json and the README.
+    """
+    if not (ROOT / "data" / "raw").exists():
+        return (FAIL, "data/raw missing — run bash scripts/download.sh")
+    if (ROOT / "data" / "raw" / ".synthetic").exists():
+        return (FAIL, "data/raw is SYNTHETIC smoke data — any metrics from it are "
+                      "meaningless. Run: bash scripts/download.sh")
+    n = len([p for p in (ROOT / "data" / "raw").rglob("*")
+             if p.suffix.lower() in {".jpg", ".jpeg", ".png"}])
+    return ok(n > 1000, f"{n:,} real images",
+              f"only {n} images — expected ~25k for this dataset")
 
 
 @check(34, "DATA", "Corrupt-image audit ran and produced a report", 1)

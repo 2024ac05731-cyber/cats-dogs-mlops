@@ -21,8 +21,18 @@ DATASET="bhavikjikadara/dog-and-cat-classification-dataset"
 RAW_DIR="data/raw"
 LOCAL_ARCHIVE="${1:-}"
 
-# Already populated? Bail out unless forced.
-if [[ -d "$RAW_DIR" ]] && [[ -n "$(find "$RAW_DIR" -type f -name '*.jpg' -print -quit 2>/dev/null)" ]]; then
+# Already populated with REAL data? Bail out unless forced.
+#
+# The .synthetic marker distinguishes scripts/make_fixtures.py output from the
+# real dataset. Without that check this guard counted the 122 synthetic smoke
+# images as "already downloaded" and skipped the real fetch — and a training run
+# on synthetic data would have reported meaningless accuracy.
+if [[ -f "$RAW_DIR/.synthetic" ]]; then
+  echo "[download] data/raw currently holds SYNTHETIC smoke-test images"
+  echo "[download] removing them and fetching the real dataset"
+  rm -rf "${RAW_DIR:?}"/*
+  rm -f "$RAW_DIR/.synthetic"
+elif [[ -d "$RAW_DIR" ]] && [[ -n "$(find "$RAW_DIR" -type f -name '*.jpg' -print -quit 2>/dev/null)" ]]; then
   if [[ "${DATA_FORCE:-0}" != "1" ]]; then
     count=$(find "$RAW_DIR" -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' \) | wc -l | tr -d ' ')
     echo "[download] re-using existing $RAW_DIR ($count image files)"

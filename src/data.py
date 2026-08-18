@@ -26,6 +26,7 @@ RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 MONITORING_DIR = DATA_DIR / "monitoring"
 CORRUPT_REPORT = DATA_DIR / "corrupt_files.txt"
+SYNTHETIC_MARKER = RAW_DIR / ".synthetic"
 
 # --- Canonical constants. Import these; never redefine them. ---
 IMG_SIZE = (224, 224)          # spec: 224x224 RGB for standard CNNs
@@ -150,8 +151,31 @@ def load_corrupt_list() -> set[str]:
     }
 
 
+def is_synthetic(base: Path = RAW_DIR) -> bool:
+    """True when data/raw holds smoke-test images rather than the real dataset.
+
+    Guards against the failure mode where a training run silently fits on
+    synthetic fixtures and reports a meaningless accuracy that then gets written
+    into model_metadata.json and the README.
+    """
+    return (base / ".synthetic").exists()
+
+
+def warn_if_synthetic(base: Path = RAW_DIR) -> bool:
+    """Print a loud banner if the data is synthetic. Returns ``is_synthetic``."""
+    if not is_synthetic(base):
+        return False
+    print("\n" + "!" * 78)
+    print("!! data/raw holds SYNTHETIC smoke-test images, NOT the Kaggle dataset.")
+    print("!! Any metrics produced from this are meaningless for the assignment.")
+    print("!! Fetch the real data:  bash scripts/download.sh")
+    print("!" * 78 + "\n")
+    return True
+
+
 def inspect(base: Path = RAW_DIR) -> dict:
     """Print shape/balance/corruption summary. Returns the stats dict."""
+    synthetic = warn_if_synthetic(base)
     roots = find_image_root(base)
     print("\n=== class directories ===")
     for cls, d in roots.items():
@@ -190,9 +214,12 @@ def inspect(base: Path = RAW_DIR) -> dict:
         "corrupt": len(bad),
         "per_class": per_class,
         "suffixes": suffixes,
+        "synthetic": synthetic,
     }
     balance = {c: round(100 * n / total, 1) for c, n in per_class.items()} if total else {}
     print(f"\n[data] usable={total}, corrupt={len(bad)}, balance={balance}")
+    if synthetic:
+        print("[data] SOURCE: synthetic smoke fixture — not the real dataset")
     return stats
 
 
