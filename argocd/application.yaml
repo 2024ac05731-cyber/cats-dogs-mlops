@@ -1,0 +1,70 @@
+# Argo CD Application for the Cats vs Dogs API (M4 — GitOps).
+#
+# This is what makes deployment a consequence of a commit rather than of a human
+# running kubectl. Assignment 1 was marked "thin CI/CD" partly because its
+# deployment step was a person typing `kubectl apply`; the substantive difference
+# here is that nobody deploys — Argo CD reconciles the cluster toward whatever
+# k8s/ says on main.
+#
+# Install Argo CD and apply this once:
+#   kubectl create namespace argocd
+#   kubectl apply -n argocd -f \
+#     https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#   kubectl wait --for=condition=available --timeout=300s \
+#     deployment/argocd-server -n argocd
+#   kubectl apply -f argocd/application.yaml
+#
+# UI + initial password:
+#   kubectl port-forward svc/argocd-server -n argocd 8080:443
+#   kubectl -n argocd get secret argocd-initial-admin-secret \
+#     -o jsonpath='{.data.password}' | base64 -d
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: catdog-api
+  namespace: argocd
+  finalizers:
+    # Ensures deleting the Application also removes what it created, instead of
+    # orphaning the Deployment and Service in the cluster.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/2024ac05731-cyber/cats-dogs-mlops.git
+    targetRevision: main
+    path: k8s          # every manifest in k8s/ is managed, including the ServiceMonitor
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      # prune: remove resources deleted from git, so git is authoritative rather
+      # than merely additive.
+      prune: true
+      # selfHeal: revert manual kubectl edits. This is the reconciliation
+      # behaviour a deploy script cannot demonstrate, and it is the Day 8
+      # screenshot worth capturing.
+      #
+      # Consequence worth knowing: debugging by hand-editing live resources will
+      # not work any more — Argo reverts it within seconds. Change the manifest
+      # in git instead.
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      # The ServiceMonitor CRD only exists after kube-prometheus-stack is
+      # installed. Skipping the dry-run check on missing resources stops Argo
+      # failing the whole sync over a CRD that arrives later (M5, Day 9).
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m
+
+  # Trim rollout noise: replica counts are managed by the manifest, but a
+  # transient difference during a rolling update should not show as OutOfSync.
+  revisionHistoryLimit: 10

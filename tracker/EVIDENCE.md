@@ -15,11 +15,11 @@ Status: `[ ]` not captured | `[x]` captured | `[~]` covered by another shot
 
 | File | Status | What it shows |
 |------|--------|---------------|
-| `reports/figures/class_balance.png` | [ ] | Cat vs dog image counts, with the split balance |
+| `reports/figures/class_balance.png` | [x] | Cat vs dog image counts, with the split balance |
 | `reports/figures/image_dimensions.png` | [ ] | Distribution of source image sizes before the 224x224 resize |
-| `reports/figures/sample_grid.png` | [ ] | Sample images per class, own palette and captions |
-| `reports/figures/augmentation_grid.png` | [ ] | One image through flip/rotate/zoom/contrast — proves augmentation runs |
-| `data/corrupt_files.txt` | [ ] | The corrupt/truncated JPEGs found in the audit, with a count |
+| `reports/figures/sample_grid.png` | [x] | Sample images per class, own palette and captions |
+| `reports/figures/augmentation_grid.png` | [x] | One image through flip/rotate/zoom/contrast — proves augmentation runs |
+| `data/corrupt_files.txt` | [x] | The corrupt/truncated JPEGs found in the audit, with a count |
 
 ### DVC (Day 3)
 
@@ -34,9 +34,9 @@ Status: `[ ]` not captured | `[x]` captured | `[~]` covered by another shot
 
 | File | Status | What it shows |
 |------|--------|---------------|
-| `reports/cv_results.csv` | [ ] | **One row per (model, fold)** — 10 rows for 2 models × 5 folds, plus mean and std rows |
-| `reports/figures/cv_comparison.png` | [ ] | Mean CV score ± std error bars, both architectures side by side |
-| `reports/figures/cv_fold_scores.png` | [ ] | Per-fold scores showing fold-to-fold variance |
+| `reports/cv_results.csv` | [x] | **One row per (model, fold)** — 10 rows for 2 models × 5 folds, plus mean and std rows |
+| `reports/figures/cv_comparison.png` | [x] | Mean CV score ± std error bars, both architectures side by side |
+| `reports/figures/cv_fold_scores.png` | [x] | Per-fold scores showing fold-to-fold variance |
 | `reports/screenshots/mlflow/cv_nested_runs.png` | [ ] | MLflow: parent run per model with 5 nested `fold_N` runs visible |
 | `reports/screenshots/cv/cv_console_output.png` | [ ] | Terminal output of `python -m src.cross_validate` — per-fold lines as they complete |
 | `reports/screenshots/cv/readme_cv_section.png` | [ ] | The `## Cross-validation` section rendered on GitHub |
@@ -45,12 +45,12 @@ Status: `[ ]` not captured | `[x]` captured | `[~]` covered by another shot
 
 | File | Status | What it shows |
 |------|--------|---------------|
-| `reports/figures/loss_curves.png` | [ ] | Train vs val loss per epoch |
-| `reports/figures/accuracy_curves.png` | [ ] | Train vs val accuracy per epoch |
-| `reports/figures/confusion_matrix.png` | [ ] | Test-set confusion matrix for the selected model |
-| `reports/figures/roc_curve.png` | [ ] | Test-set ROC with AUC |
-| `models/model.h5` | [ ] | The packaged model — **committed to Git**, not DVC-only |
-| `models/model_metadata.json` | [ ] | Versions, hyperparameters, input shape, class map, CV + test metrics |
+| `reports/figures/loss_curves.png` | [x] | Train vs val loss per epoch |
+| `reports/figures/accuracy_curves.png` | [x] | Train vs val accuracy per epoch |
+| `reports/figures/confusion_matrix.png` | [x] | Test-set confusion matrix for the selected model |
+| `reports/figures/roc_curve.png` | [x] | Test-set ROC with AUC |
+| `models/model.h5` | [x] | The packaged model — **committed to Git**, not DVC-only |
+| `models/model_metadata.json` | [x] | Versions, hyperparameters, input shape, class map, CV + test metrics |
 
 ### MLflow (Day 7)
 

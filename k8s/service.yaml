@@ -1,0 +1,21 @@
+# Service fronting the catdog-api pods (M4).
+#
+# LoadBalancer rather than NodePort so the URL is stable and looks like a real
+# deployment. On Minikube the external IP is provisioned by `minikube tunnel`,
+# which must be running in a separate terminal — without it the EXTERNAL-IP stays
+# <pending> and the smoke test cannot reach the service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: catdog-api
+  labels:
+    app: catdog-api
+spec:
+  type: LoadBalancer
+  selector:
+    app: catdog-api
+  ports:
+    - name: http
+      port: 80          # port 80 externally...
+      targetPort: http  # ...to the container's 8000, by name not number
+      protocol: TCP

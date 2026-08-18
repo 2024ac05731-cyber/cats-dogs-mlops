@@ -1,0 +1,24 @@
+# Tells the kube-prometheus-stack Prometheus to scrape the API's /metrics (M5).
+#
+# Committed into k8s/ deliberately, so Argo CD manages monitoring config the same
+# way it manages the Deployment — monitoring that drifts from the manifest is the
+# usual reason a dashboard silently stops working.
+#
+# Requires the Prometheus Operator CRDs, so this only applies AFTER the Helm
+# install of kube-prometheus-stack (see monitoring/README.md). Argo CD will report
+# the Application as degraded until then, which is expected, not a failure.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: catdog-api
+  labels:
+    app: catdog-api
+    release: monitoring   # matches the Helm release so Prometheus selects it
+spec:
+  selector:
+    matchLabels:
+      app: catdog-api     # picks the catdog-api Service
+  endpoints:
+    - port: http          # the Service's named port (80 -> container 8000)
+      path: /metrics
+      interval: 15s

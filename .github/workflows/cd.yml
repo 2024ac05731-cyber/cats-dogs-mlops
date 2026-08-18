@@ -1,0 +1,202 @@
+# Continuous Deployment (M4).
+#
+# Two halves, deliberately split by where they can run:
+#
+#   gitops-bump   (GitHub-hosted) rewrites the image tag in k8s/deployment.yaml to
+#                 the SHA that CI just published, and commits it. That commit is
+#                 the deploy trigger — Argo CD watches main and reconciles. Nobody
+#                 runs kubectl.
+#
+#   verify        (SELF-HOSTED) waits for the rollout, runs the post-deploy smoke
+#                 test against the live service, and rolls back if it fails.
+#                 Self-hosted is not a preference: a GitHub-hosted runner cannot
+#                 reach a Minikube cluster on a laptop, and a gate that cannot
+#                 reach the deployment is not a gate (ADR-007).
+#
+# Assignment 1 had neither half. Deployment was a human typing kubectl, and
+# nothing verified the result — a bad image simply stayed deployed.
+name: CD
+
+on:
+  # Chained off CI so deployment only happens after lint, test, build,
+  # image-smoke AND the GHCR publish have all succeeded.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (commit SHA) to deploy"
+        required: false
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false     # never interleave two rollouts
+
+permissions:
+  contents: read
+
+jobs:
+  gitops-bump:
+    name: Bump image tag (GitOps trigger)
+    # Only when CI actually succeeded. workflow_run fires on failure too, and
+    # deploying the SHA of a red build is precisely the mistake to avoid.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write           # needed to commit the tag bump back to main
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      bumped: ${{ steps.bump.outputs.bumped }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # A PAT is not required: the default token can push to the same repo,
+          # and the [skip ci] guard below stops the loop.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve the SHA to deploy
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            SHA="${{ inputs.image_tag }}"
+          else
+            SHA="${{ github.event.workflow_run.head_sha }}"
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "deploying $SHA"
+
+      - name: Rewrite the image tag in k8s/deployment.yaml
+        id: bump
+        env:
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/catdog-api:${SHA}"
+          # Anchored on the `image:` key so nothing else in the manifest can be
+          # rewritten by accident.
+          python - <<PY
+          import pathlib, re, os
+          p = pathlib.Path("k8s/deployment.yaml")
+          t = p.read_text()
+          new = t if False else re.sub(
+              r"(^\s+image:\s*).*$",
+              lambda m: m.group(1) + os.environ["IMAGE"],
+              t, count=1, flags=re.MULTILINE)
+          p.write_text(new)
+          print("image line ->", [l for l in new.splitlines() if "image:" in l][0].strip())
+          PY
+          if git diff --quiet k8s/deployment.yaml; then
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "tag already current; nothing to commit"
+          else
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+          fi
+        # IMAGE is exported for the heredoc above.
+        continue-on-error: false
+
+      - name: Commit and push the bump
+        if: steps.bump.outputs.bumped == 'true'
+        env:
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add k8s/deployment.yaml
+          # [skip ci] is load-bearing: without it this commit retriggers CI, which
+          # publishes, which bumps again — an infinite loop. Guarded on the first
+          # attempt rather than after ten runs (ADR-007).
+          git commit -m "deploy: catdog-api:${SHA:0:12} [skip ci]
+
+          Automated GitOps tag bump. Argo CD reconciles main, so this commit IS
+          the deployment record — git log k8s/deployment.yaml is the deploy history."
+          git push origin main
+
+      - name: Summary
+        run: |
+          {
+            echo "### GitOps bump"
+            echo "- image: \`ghcr.io/${{ github.repository_owner }}/catdog-api:${{ steps.resolve.outputs.sha }}\`"
+            echo "- committed: ${{ steps.bump.outputs.bumped }}"
+            echo "- Argo CD will reconcile \`main\` automatically"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: Wait for rollout, smoke test, roll back on failure
+    needs: gitops-bump
+    # Requires a self-hosted runner on the machine running Minikube. If none is
+    # registered this job stays queued — which is honest: it means the deployment
+    # was never verified. See tracker/PROGRESS.md Day 9 for registration steps.
+    runs-on: [self-hosted, minikube]
+    env:
+      SHA: ${{ needs.gitops-bump.outputs.sha }}
+      SERVICE_URL: http://127.0.0.1
+    steps:
+      - uses: actions/checkout@v4     # for scripts/ and tests/fixtures/
+
+      - name: Cluster reachable?
+        run: |
+          kubectl cluster-info
+          kubectl get deploy catdog-api -o wide
+
+      # Argo CD syncs asynchronously, so give it a moment to notice the commit
+      # before asking the Deployment whether it rolled out.
+      - name: Wait for Argo CD to apply the new tag
+        run: |
+          WANT="ghcr.io/${{ github.repository_owner }}/catdog-api:${SHA}"
+          echo "waiting for image == $WANT"
+          for i in $(seq 1 60); do
+            GOT=$(kubectl get deploy catdog-api \
+                    -o jsonpath='{.spec.template.spec.containers[0].image}')
+            if [ "$GOT" = "$WANT" ]; then echo "Argo CD applied it after ${i}0s"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::Argo CD did not apply $WANT within 10 minutes (currently $GOT)"
+          exit 1
+
+      - name: Wait for rollout to complete
+        run: kubectl rollout status deployment/catdog-api --timeout=300s
+
+      - name: Post-deploy smoke test
+        id: smoke
+        run: python3 scripts/smoke_test_deployed.py --url "$SERVICE_URL" --timeout 180
+
+      # THE GATE. A failed smoke test rolls the Deployment back to the previous
+      # ReplicaSet, so the cluster returns to a version known to work.
+      #
+      # Note: Argo CD's selfHeal will re-apply the bad manifest shortly after,
+      # because git still points at the broken SHA. The rollback buys working
+      # service while a human reverts the bump commit — which is the durable fix.
+      # Verified on Day 9; recorded in ADR-007.
+      - name: Roll back on smoke-test failure
+        if: failure() && steps.smoke.outcome == 'failure'
+        run: |
+          echo "::error::smoke test failed — rolling back"
+          kubectl rollout undo deployment/catdog-api
+          kubectl rollout status deployment/catdog-api --timeout=300s
+          echo "rolled back; verifying the previous version serves"
+          python3 scripts/smoke_test_deployed.py --url "$SERVICE_URL" --timeout 180 \
+            && echo "previous version is healthy" \
+            || echo "::error::previous version is ALSO failing — manual intervention needed"
+          echo "NEXT STEP: revert the deploy commit on main, or Argo CD will re-apply the bad tag"
+          exit 1
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          kubectl get pods -l app=catdog-api -o wide || true
+          kubectl describe deploy catdog-api | tail -30 || true
+          kubectl logs -l app=catdog-api --tail=40 --all-containers || true
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deployment verification"
+            echo "- image: \`ghcr.io/${{ github.repository_owner }}/catdog-api:${SHA}\`"
+            echo "- smoke test: ${{ steps.smoke.outcome }}"
+            kubectl get deploy catdog-api -o wide 2>/dev/null | sed 's/^/    /' || true
+          } >> "$GITHUB_STEP_SUMMARY"

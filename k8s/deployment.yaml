@@ -1,0 +1,76 @@
+# Deployment for the Cats vs Dogs inference API (M4).
+#
+# The image tag is a full commit SHA, not `latest`, and that is the load-bearing
+# detail of this whole module. `latest` cannot express "deploy *this* build", so a
+# rollout would be untraceable and Argo CD would have nothing to diff. With a SHA
+# tag, CI's tag-bump commit *is* the deployment record: `git log k8s/deployment.yaml`
+# reads as a deploy history (Guardrail Rule 7).
+#
+# The tag below is rewritten by the `gitops-bump` job in .github/workflows/cd.yml.
+# The placeholder is replaced on the first successful publish to GHCR.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catdog-api
+  labels:
+    app: catdog-api
+spec:
+  # Two replicas so a pod can die (or be deleted for the self-heal demo) without
+  # dropping requests.
+  replicas: 2
+  revisionHistoryLimit: 5      # keeps `kubectl rollout undo` useful
+  selector:
+    matchLabels:
+      app: catdog-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0        # never drop below 2 ready pods during a rollout
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: catdog-api
+    spec:
+      containers:
+        - name: catdog-api
+          # IMAGE_TAG_MANAGED_BY_CI — do not hand-edit; cd.yml rewrites this line.
+          image: ghcr.io/2024ac05731-cyber/catdog-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            # TensorFlow's memory floor is the binding constraint here: the process
+            # sits around 500-600MB once the model is loaded, so a 256Mi limit
+            # would be OOMKilled during startup rather than under load — which
+            # looks like a crash-loop bug and isn't one.
+            requests:
+              cpu: "200m"
+              memory: "600Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1500Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            # Measured: the container reached /health in 4s locally. 15s of grace
+            # plus 12 failures (~60s) leaves generous headroom on a slower node
+            # without masking a genuinely broken image.
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

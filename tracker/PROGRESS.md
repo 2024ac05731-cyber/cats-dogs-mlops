@@ -1,6 +1,6 @@
 # 10-Day Progress Dashboard (compressed)
 
-**Overall:** 3/10 days complete (30%) | **Last updated:** 2026-08-18 (Days 1-3 done and audited; Day 4 CV running)
+**Overall:** 6/10 days complete (60%) | **Last updated:** 2026-08-18 (M1 + M2 complete and container-verified; Day 7 CI written, awaiting first run)
 
 Status legend: `[ ]` not started | `[/]` in progress | `[x]` done | `[!]` blocked | `[~]` deferred
 
@@ -153,7 +153,9 @@ than the full pool (~5.7 h). Documented in `src/cross_validate.py`, ADR-005, and
 
 ## Day 4 — 5-Fold Cross-Validation **`[GAP-CV]` — PROTECTED DAY**
 *(was Day 6 — unchanged in scope)*
-- **Status:** [/] src/cross_validate.py written, validated, committed; full run in progress
+- **Status:** [x] COMPLETE — all 12 [GAP-CV] audit checks pass
+- **Date completed:** 2026-08-18
+- **Result:** transfer 0.9840 ± 0.0037 vs baseline 0.6198 ± 0.0373 accuracy, 10 fits, 31.3 min
 - **Time estimate:** ~6 h including training wall-clock
 - **Goal:** Cross-validation a grader cannot miss.
 
@@ -187,7 +189,8 @@ feedback. If Day 3 overruns, start the CV runs first thing and finish Day 3's fi
 
 ## Day 5 — MLflow + FastAPI Service
 *(was Days 7–8)*
-- **Status:** [ ]
+- **Status:** [x] COMPLETE — M1 closed, API serving
+- **Date completed:** 2026-08-18
 - **Time estimate:** ~6 h
 - **Goal:** M1 closed. Inference API serving real predictions.
 
@@ -219,7 +222,8 @@ feedback. If Day 3 overruns, start the CV runs first thing and finish Day 3's fi
 
 ## Day 6 — API Hardening, Logging, Docker
 *(was Days 9–10)*
-- **Status:** [ ]
+- **Status:** [x] COMPLETE — M2 closed, container verified
+- **Date completed:** 2026-08-18
 - **Time estimate:** ~6 h
 - **Goal:** M2 closed. Container serves predictions with no host dependency.
 
