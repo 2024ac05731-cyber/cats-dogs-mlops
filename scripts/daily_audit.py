@@ -627,17 +627,35 @@ def _46():
 
 @check(47, "PREPROCESS", "Corrupt files excluded from the manifests", 2)
 def _47():
-    corrupt = {x.strip() for x in read("data/corrupt_files.txt").splitlines() if x.strip()}
+    """Compares full paths, not basenames.
+
+    This check originally matched corrupt entries by filename and reported a
+    false positive: PetImages numbers files per class, so Cat/9041.jpg and
+    Dog/9041.jpg both exist, and only the dog one is truncated. That is the exact
+    bug fixed in src/preprocess.py — it was present here too, which is a good
+    argument for the audit and the code not sharing an author's assumptions.
+    """
+    corrupt = {x.strip() for x in read("data/corrupt_files.txt").splitlines()
+               if x.strip() and not x.startswith("#")}
     if not corrupt:
         return (NOTYET, "no corrupt list (run the Day 1 audit)")
-    listed = set()
+
+    listed: set[str] = set()
     for s in ("train", "val", "test"):
         for r in rows(f"data/processed/{s}.csv"):
-            listed.add(next(iter(r.values())))
-    names = {Path(c).name for c in corrupt}
-    leaked = [n for n in names if any(n in entry for entry in listed)]
-    return ok(not leaked, f"{len(corrupt)} excluded",
-              f"CORRUPT FILES IN MANIFESTS: {len(leaked)}")
+            p = r.get("filepath") or next(iter(r.values()))
+            # Manifests hold absolute paths; corrupt_files.txt holds repo-relative.
+            try:
+                p = str(Path(p).resolve().relative_to(ROOT))
+            except ValueError:
+                p = str(p)
+            listed.add(p)
+    if not listed:
+        return (NOTYET, "manifests not built yet")
+
+    leaked = sorted(corrupt & listed)
+    return ok(not leaked, f"{len(corrupt)} corrupt file(s) excluded",
+              f"CORRUPT FILES IN MANIFESTS: {', '.join(leaked)}")
 
 
 @check(48, "PREPROCESS", "Augmentation applied to train only", 2)

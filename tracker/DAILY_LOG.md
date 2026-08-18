@@ -234,3 +234,93 @@ context, and (2) it gives raw material for the demo video narration and for any 
   metadata, and **measure per-epoch wall-clock to size the Day 4 CV protocol**.
 
 **Commits:** `a286432`, `3635ef4`, `210b949`, `daf9261`
+
+---
+
+### 2026-08-18 — Day 3 (real data, training pipeline, GitHub remote)
+
+**Time spent:** ~4 h
+**Sub-tasks completed:** all of Day 3
+**Status at end of day:** on track; M1 needs only cross-validation (Day 4)
+
+**What I did:**
+- Ingested the real Kaggle dataset: 24,998 files, 858MB, `PetImages/{Cat,Dog}`.
+- Wrote and validated `src/train.py` end-to-end on real data.
+- Wrote `tests/test_preprocess.py` — 21 tests, M3's required pre-processing test.
+- Regenerated the EDA figures from real data and visually confirmed `sample_grid.png` shows real
+  cats and dogs under correct labels.
+- Added the `train` stage to `dvc.yaml`; `dvc status` clean.
+- Created and pushed to `github.com/2024ac05731-cyber/cats-dogs-mlops` (10 commits, 4.89 MiB).
+  Confirmed 0 files tracked under `data/raw/` or `mlruns/`, so the 858MB dataset stayed local.
+
+**PER-EPOCH WALL-CLOCK (audit check 62 — this sizes the Day 4 CV protocol):**
+
+| Config | Per epoch | 10 epochs | 5-fold x 2 architectures |
+|---|---|---|---|
+| 4,000-image subset | **40.9 s** | ~7 min | **~41 min** |
+| 2,000-image subset | 20.4 s | ~3.5 min | ~20 min |
+| Full 19,997 train | **~3.4 min** | ~34 min | **~5.7 h** |
+
+Baseline CNN measured at ~10 ms/image/epoch on this CPU. **Decision: cross-validate on a
+documented stratified subset (~4,000 images), not the full split.** ~41 min is affordable inside a
+10-day plan; 5.7 h is not. The protocol (k=5, subset size, epochs/fold, wall-clock) goes in the
+module docstring, ADR-005, and the README — a documented reduction is defensible, a silent one is
+the A1 mistake (Guardrail Rule 8).
+
+**Validated training run** (baseline CNN, 4k subset, 12 epochs): accuracy 0.7180, precision 0.6799,
+recall 0.8240, F1 0.7450, ROC-AUC 0.8129. Both classes predicted; MLflow run logged.
+
+**What worked:**
+- Reconciling counts instead of trusting them found two real data bugs (below). "0 corrupt" looked
+  like good news and was actually a broken detector.
+- Running the pipeline on a small subset first surfaced the MLflow and degeneracy problems in ~1 min
+  each, rather than after a 34-minute full run.
+
+**What didn't / blockers — five bugs, all found by running things:**
+1. **Truncated JPEG passed the audit.** Pillow does not raise on truncation — it warns and pads the
+   missing scanlines with grey. `except Exception` never fired, so `Dog/9041.jpg` would have entered
+   training as partially-grey garbage. Both `audit_images` and `load_image` now escalate that
+   specific warning to an error. Result: 24,997 usable, 1 corrupt.
+2. **Manifests were one image short (24,996 vs 24,997).** The corrupt-exclusion filter matched bare
+   filenames, and PetImages numbers files per class — so the healthy `Cat/9041.jpg` was discarded
+   alongside the truncated `Dog/9041.jpg`. Now matches repo-relative paths. Counts reconcile exactly.
+3. **MLflow silently lost the entire first run.** MLflow 3.x *raises* on the filesystem backend
+   unless `MLFLOW_ALLOW_FILE_STORE=true`, and my handler reported it as a passing warning — M1's
+   tracking marks vanishing quietly, the exact "present but invisible" pattern from A1. A1 solved
+   this same problem and I should have carried it over. Handler is now a loud banner.
+4. **First model was degenerate, not undertrained.** accuracy 0.5000 with precision and recall of
+   *exactly* 0.0 = every prediction one class, i.e. the class prior on a balanced set. Reporting it
+   as "weak" would have been wrong in kind. Added `check_not_degenerate()`, which refuses to endorse
+   such metrics and writes the warning into `model_metadata.json`.
+5. **My own audit check 47 had bug #2.** It matched corrupt files by basename and false-positived on
+   the healthy `Cat/9041.jpg`. Fixed to compare full paths. Worth noting the audit and the code
+   shared my wrong assumption — independent checks would have caught it sooner.
+
+**Decisions made:**
+- CV protocol: 5-fold on a ~4,000-image stratified subset, from measured timing. Formalise in
+  ADR-005 on Day 4.
+- Repo is **public** (created via web UI). Convenient for Day 8 — a public GHCR package needs no
+  `imagePullSecret`, resolving ADR-006 the simple way. Flagged the plagiarism-exposure tradeoff to
+  the user; awaiting their call on private-repo-plus-public-package.
+- Noted: `--subset` takes a stratified *head*, not a random sample. Fine for a pipeline check, but
+  CV must sample randomly under `RANDOM_STATE` or fold composition is biased.
+
+**Evidence captured:**
+- `class_balance.png`, `sample_grid.png`, `augmentation_grid.png` (real data), plus `loss_curves`,
+  `accuracy_curves`, `confusion_matrix`, `roc_curve` from the validated run.
+- Still to capture: MLflow UI screenshots (Day 4, alongside the CV runs).
+
+**Guardrail check:**
+- Rule 3 (per-unit before aggregate) is what caught bug #2 — the totals only disagreed by 1.
+- Rule 8 honoured: the CV subset decision is written down with the numbers behind it.
+- Audit at end of day: **50 pass · 1 fail (this uncommitted log) · 47 not-yet**.
+
+**Tomorrow's plan (Day 4 — PROTECTED, the A1 mark-loss axis):**
+- `src/cross_validate.py`: hand-rolled `StratifiedKFold(5)`, model rebuilt **and recompiled** per
+  fold, freshness asserted, random subset sampling under `RANDOM_STATE`.
+- Both architectures. Needs the MobileNetV2 ImageNet weights, which download on first use — this
+  machine's proxy blocked it, so confirm it works or fall back to `--no-pretrained`.
+- `reports/cv_results.csv` with 10 fold rows plus mean/std, both CV figures, nested MLflow runs,
+  README `## Cross-validation` section, ADR-005.
+
+**Commits:** see `git log` (10 pushed to origin/main)

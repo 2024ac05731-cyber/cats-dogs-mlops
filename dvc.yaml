@@ -30,5 +30,33 @@ stages:
       - data/processed/val.csv
       - data/processed/test.csv
 
-# Added on Day 3 (train) and Day 4 (cross_validate), once src/train.py and
-# src/cross_validate.py exist. Declaring them earlier breaks `dvc repro`.
+  train:
+    cmd: python -m src.train --model transfer
+    deps:
+      - src/model.py
+      - src/train.py
+      - data/processed/train.csv
+      - data/processed/val.csv
+      - data/processed/test.csv
+    outs:
+      # cache: false because model.h5 is a committed deliverable (ADR-004) — the
+      # grader cannot `dvc pull` from a local filesystem remote.
+      - models/model.h5:
+          cache: false
+      - models/model_metadata.json:
+          cache: false
+    metrics:
+      - reports/metrics.json:
+          cache: false
+    plots:
+      - reports/figures/loss_curves.png:
+          cache: false
+      - reports/figures/accuracy_curves.png:
+          cache: false
+      - reports/figures/confusion_matrix.png:
+          cache: false
+      - reports/figures/roc_curve.png:
+          cache: false
+
+# The cross_validate stage is added on Day 4, once src/cross_validate.py exists.
+# Declaring a stage whose script is missing breaks `dvc repro` outright.
