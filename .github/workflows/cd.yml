@@ -74,20 +74,32 @@ jobs:
         id: bump
         env:
           SHA: ${{ steps.resolve.outputs.sha }}
+          # IMAGE is declared here rather than assigned in the shell body. A bare
+          # `IMAGE=...` is a shell variable, not an environment variable, so the
+          # heredoc'd Python could not see it and died with KeyError — which is how
+          # CD #1 failed in 12s. Declaring it in `env:` is both correct and
+          # verifiable by reading the step.
+          IMAGE: ghcr.io/${{ github.repository_owner }}/catdog-api:${{ steps.resolve.outputs.sha }}
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/catdog-api:${SHA}"
+          echo "target image: $IMAGE"
           # Anchored on the `image:` key so nothing else in the manifest can be
-          # rewritten by accident.
-          python - <<PY
-          import pathlib, re, os
+          # rewritten by accident. Verified by dry-run: changes exactly one line.
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          image = os.environ["IMAGE"]
           p = pathlib.Path("k8s/deployment.yaml")
-          t = p.read_text()
-          new = t if False else re.sub(
-              r"(^\s+image:\s*).*$",
-              lambda m: m.group(1) + os.environ["IMAGE"],
-              t, count=1, flags=re.MULTILINE)
-          p.write_text(new)
-          print("image line ->", [l for l in new.splitlines() if "image:" in l][0].strip())
+          before = p.read_text()
+          after = re.sub(r"(^\s+image:\s*).*$",
+                         lambda m: m.group(1) + image,
+                         before, count=1, flags=re.MULTILINE)
+          if after == before:
+              print("no change: tag already current")
+          p.write_text(after)
+          line = next(x.strip() for x in after.splitlines() if "image:" in x)
+          print("image line ->", line)
           PY
           if git diff --quiet k8s/deployment.yaml; then
             echo "bumped=false" >> "$GITHUB_OUTPUT"
@@ -95,8 +107,6 @@ jobs:
           else
             echo "bumped=true" >> "$GITHUB_OUTPUT"
           fi
-        # IMAGE is exported for the heredoc above.
-        continue-on-error: false
 
       - name: Commit and push the bump
         if: steps.bump.outputs.bumped == 'true'
