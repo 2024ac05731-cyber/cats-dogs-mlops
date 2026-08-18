@@ -139,13 +139,27 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # Single-architecture (native amd64) DELIBERATELY, even though `publish`
+      # emits a multi-arch manifest. Two reasons:
+      #   1. `load: true` cannot load a multi-platform build into the local daemon,
+      #      and without loading it the smoke-test job has nothing to run.
+      #   2. Building both arches here would double the slowest path in CI just to
+      #      throw one of them away.
+      # The arm64 variant is exercised separately: it is the one built and verified
+      # locally on the Apple Silicon dev machine (see tracker/EVIDENCE.md), so both
+      # published architectures have been run, not just published.
       - name: Build (load into the local daemon, do not push)
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64
           load: true
           tags: catdog-api:ci
+          # Attestations turn a single build into a manifest list, which `load`
+          # cannot handle. Off here; `publish` gets them via buildx defaults.
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -299,6 +313,13 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # QEMU is what lets an amd64 runner emit an arm64 layer. Only needed in this
+      # job, because `build` above stays single-arch on purpose (see below).
+      - name: Set up QEMU for cross-architecture builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -318,15 +339,41 @@ jobs:
             type=sha,format=long,prefix=
             type=raw,value=latest
 
-      - name: Build and push
+      # Multi-architecture on purpose. GitHub runners are linux/amd64 but the
+      # Minikube cluster this deploys to runs on Apple Silicon (linux/arm64), so a
+      # single-arch amd64 image could not be pulled natively — and "the image my
+      # cluster runs is the image CI published" is exactly the claim M4 is graded
+      # on. Publishing a manifest list means the node pulls the right variant with
+      # no emulation and no imagePullPolicy tricks.
+      #
+      # This is also why requirements-serve.txt pins TensorFlow per architecture
+      # (ADR-002): tensorflow-cpu has no arm64 Linux wheel, so the arm64 layer
+      # resolves plain `tensorflow` at the same 2.20.0 version.
+      #
+      # Cost: the arm64 layer builds under QEMU emulation, so this job is slower
+      # than `build`. Accepted — it runs once per push to main, and the GHA layer
+      # cache absorbs most of it on subsequent runs.
+      - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify both architectures are in the published manifest
+        run: |
+          TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "inspecting $TAG"
+          docker buildx imagetools inspect "$TAG" | tee /tmp/manifest.txt
+          for arch in amd64 arm64; do
+            grep -q "linux/$arch" /tmp/manifest.txt \
+              || { echo "::error::linux/$arch missing from the published manifest"; exit 1; }
+            echo "  linux/$arch present"
+          done
 
       - name: Summary
         run: |
@@ -335,5 +382,11 @@ jobs:
             echo ""
             echo '```'
             echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "Platforms: \`linux/amd64\`, \`linux/arm64\`"
+            echo ""
+            echo '```'
+            cat /tmp/manifest.txt 2>/dev/null | head -30
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
