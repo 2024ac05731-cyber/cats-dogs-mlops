@@ -207,6 +207,38 @@ def package_versions() -> dict[str, str]:
     return out
 
 
+def cv_summary_for(arch: str) -> dict:
+    """Pull this architecture's CV mean/std out of reports/cv_results.csv.
+
+    Folded into the model card so the shipped artifact cites the evidence that
+    selected it (ADR-005). Without this, ``GET /`` and the README would report a
+    single-split test score with no reference to the cross-validation that
+    actually drove the decision.
+    """
+    import csv
+
+    path = ROOT / "reports" / "cv_results.csv"
+    if not path.exists():
+        return {}
+    out: dict[str, float] = {}
+    with path.open() as fh:
+        for row in csv.DictReader(fh):
+            if row.get("model") != arch:
+                continue
+            tag = (row.get("fold") or "").strip().lower()
+            if tag not in ("mean", "std"):
+                continue
+            for metric in ("accuracy", "precision", "recall", "f1", "roc_auc"):
+                try:
+                    out[f"{metric}_{tag}"] = round(float(row[metric]), 6)
+                except (KeyError, TypeError, ValueError):
+                    pass
+    if out:
+        out["source"] = "reports/cv_results.csv"
+        out["protocol"] = "5-fold StratifiedKFold over pooled train+val, test held out"
+    return out
+
+
 def save_artifacts(model, arch: str, params: dict, metrics: dict,
                    epoch_times: list[float], history: dict) -> None:
     """Write models/model.h5 and the metadata sidecar."""
@@ -226,14 +258,16 @@ def save_artifacts(model, arch: str, params: dict, metrics: dict,
         "decision_threshold": 0.5,
         "hyperparameters": params,
         "metrics": metrics,
+        "cross_validation": cv_summary_for(arch),
         "training": {
             "epochs_run": len(epoch_times),
             "mean_epoch_seconds": round(float(np.mean(epoch_times)), 1) if epoch_times else None,
             "total_train_seconds": round(float(np.sum(epoch_times)), 1) if epoch_times else None,
             "best_val_loss": round(float(min(history.get("val_loss", [float("nan")]))), 4),
+            "device": "CPU (Apple M4 Pro) — no GPU, see ADR-011",
         },
-        "selected_by": "single train/val/test fit; see reports/cv_results.csv for "
-                       "the cross-validated comparison that drives model choice (ADR-005)",
+        "selected_by": "highest 5-fold cross-validated mean accuracy (ADR-005); "
+                       "see reports/cv_results.csv for the per-fold evidence",
     }
     METADATA_PATH.write_text(json.dumps(metadata, indent=2) + "\n")
     METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)

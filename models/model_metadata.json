@@ -1,5 +1,5 @@
 {
-  "model_family": "baseline",
+  "model_family": "transfer",
   "framework": "tensorflow/keras 2.20.0",
   "artifact_format": "h5",
   "package_versions": {
@@ -28,37 +28,52 @@
   },
   "decision_threshold": 0.5,
   "hyperparameters": {
-    "architecture": "baseline",
-    "epochs_requested": 12,
+    "architecture": "transfer",
+    "epochs_requested": 10,
     "learning_rate": 0.001,
     "batch_size": 32,
     "optimizer": "adam",
     "loss": "binary_crossentropy",
     "augmentation": "flip/rotation(0.1)/zoom(0.1)/contrast(0.1), clipped to [0,1]",
-    "pretrained_weights": null,
-    "subset": 4000
+    "pretrained_weights": "imagenet",
+    "subset": null
   },
   "metrics": {
     "test": {
-      "accuracy": 0.718,
-      "precision": 0.6798679867986799,
-      "recall": 0.824,
-      "f1": 0.7450271247739603,
-      "roc_auc": 0.8129279999999999
+      "accuracy": 0.9924030387844862,
+      "precision": 0.995172968624296,
+      "recall": 0.9896,
+      "f1": 0.9923786602486964,
+      "roc_auc": 0.9997288569144684
     },
     "val": {
-      "accuracy": 0.716,
-      "precision": 0.6875,
-      "recall": 0.792,
-      "f1": 0.7360594795539034,
-      "roc_auc": 0.817728
+      "accuracy": 0.9919967987194878,
+      "precision": 0.9896496815286624,
+      "recall": 0.9944,
+      "f1": 0.9920191540303273,
+      "roc_auc": 0.9995305044035228
     }
   },
   "training": {
-    "epochs_run": 12,
-    "mean_epoch_seconds": 40.9,
-    "total_train_seconds": 490.9,
-    "best_val_loss": 0.5218
+    "epochs_run": 10,
+    "mean_epoch_seconds": 50.6,
+    "total_train_seconds": 506.5,
+    "best_val_loss": 0.0226,
+    "device": "CPU (Apple M4 Pro) \u2014 no GPU, see ADR-011"
   },
-  "selected_by": "single train/val/test fit; see reports/cv_results.csv for the cross-validated comparison that drives model choice (ADR-005)"
+  "selected_by": "highest 5-fold cross-validated mean accuracy (ADR-005); see reports/cv_results.csv for the per-fold evidence",
+  "cross_validation": {
+    "accuracy_mean": 0.984,
+    "precision_mean": 0.97978,
+    "recall_mean": 0.9885,
+    "f1_mean": 0.98409,
+    "roc_auc_mean": 0.998392,
+    "accuracy_std": 0.003657,
+    "precision_std": 0.008841,
+    "recall_std": 0.00255,
+    "f1_std": 0.003558,
+    "roc_auc_std": 0.001261,
+    "source": "reports/cv_results.csv",
+    "protocol": "5-fold StratifiedKFold over pooled train+val, test held out"
+  }
 }

@@ -108,7 +108,37 @@ CV-affordable budget", not the architecture's ceiling.
 
 ## Results
 
-_Populated on Day 4-5._
+Shipped model: **MobileNetV2 transfer learning** (frozen ImageNet base, custom head),
+selected by cross-validated mean accuracy — see [Cross-validation](#cross-validation) and ADR-005.
+
+Trained on the **full** 19,997-image train split for 10 epochs (50.6 s/epoch, ~8.5 min, CPU) and
+evaluated on the held-out 2,501-image test split, which was never used for training,
+validation, or cross-validation.
+
+| Metric | Test split (n=2,501) | 5-fold CV (mean ± std) |
+|---|---|---|
+| Accuracy | **0.9924** | 0.9840 ± 0.0037 |
+| Precision | 0.9952 | 0.9798 ± 0.0088 |
+| Recall | 0.9896 | 0.9885 ± 0.0025 |
+| F1 | 0.9924 | 0.9841 ± 0.0036 |
+| ROC-AUC | 0.9997 | 0.9984 ± 0.0013 |
+
+The test score sits slightly above the CV mean, which is expected: CV trained each fold on 3,200
+images while the final model saw 19,997. The two agree closely enough that neither looks like a fluke
+of one split — which is the point of reporting both.
+
+![Confusion matrix](reports/figures/confusion_matrix.png)
+![ROC curve](reports/figures/roc_curve.png)
+![Loss curves](reports/figures/loss_curves.png)
+![Accuracy curves](reports/figures/accuracy_curves.png)
+
+Artifacts: `models/model.h5` (9.4 MB) plus `models/model_metadata.json`, which records the package
+versions, hyperparameters, input shape, class-index map, both metric sets, and the training device.
+`scripts/daily_audit.py` cross-checks that sidecar against `requirements.txt`, so a model trained
+under drifted dependencies is caught rather than shipped.
+
+All timings are CPU (Apple M4 Pro). No GPU was used — `tensorflow-metal` is incompatible with
+TensorFlow 2.20 (ADR-011).
 
 ## Architecture
 

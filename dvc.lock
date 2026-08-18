@@ -49,37 +49,37 @@ stages:
       size: 6458
     - path: src/train.py
       hash: md5
-      md5: 7c306a8ba1b08d40c721e920b546db5e
-      size: 17529
+      md5: 942abc349fba2c9650621528a50ab853
+      size: 18844
     outs:
     - path: models/model.h5
       hash: md5
-      md5: 62f11670e85deba01022ad2a06a07f38
-      size: 2988032
+      md5: 9ce4a6e0fd6654cbd66fd5a81c649081
+      size: 9421488
     - path: models/model_metadata.json
       hash: md5
-      md5: a346f24a2db834040e9d3e1e4e3323ec
-      size: 1533
+      md5: 194489961d85228b1be0468849ef03ec
+      size: 2064
     - path: reports/figures/accuracy_curves.png
       hash: md5
-      md5: b87597c9506e4c29ec13780287206c63
-      size: 50837
+      md5: 5543dd660f1267f9c190705496be1790
+      size: 41488
     - path: reports/figures/confusion_matrix.png
       hash: md5
-      md5: b375686d1d22e8f9a5c3812e0f6b609b
-      size: 24524
+      md5: cf23f0b570c909ad4098dc7054766177
+      size: 23057
     - path: reports/figures/loss_curves.png
       hash: md5
-      md5: d44cfbe1ab7f506d78dc5d0b2a49edf2
-      size: 60785
+      md5: 3d445082ce0db71a8ab6cdab8fa99ee0
+      size: 43371
     - path: reports/figures/roc_curve.png
       hash: md5
-      md5: f3eb302571264e2ea4f54ff2781f69f1
-      size: 35589
+      md5: c5f44409cf12f7aaac444a3490641541
+      size: 32997
     - path: reports/metrics.json
       hash: md5
-      md5: a01a6090fc046621c644ad511cdb22ee
-      size: 304
+      md5: 005836796f8d11d21eb1864e8c4a94b2
+      size: 353
   cross_validate:
     cmd: python -m src.cross_validate --subset 4000 --epochs 8
     deps:
