@@ -46,6 +46,10 @@ kaggle==2.2.4
 fastapi==0.141.1
 uvicorn[standard]==0.52.3
 pydantic==2.13.4
+# Required by FastAPI for multipart/form-data — i.e. the /predict file upload.
+# FastAPI raises at import time without it, so it is not optional. Found by
+# tests/test_api.py; would otherwise have surfaced as a broken container on Day 6.
+python-multipart==0.0.32
 python-json-logger==4.1.0
 prometheus-fastapi-instrumentator==8.1.0
 
