@@ -869,26 +869,56 @@ def _68():
 
 @check(69, "CROSS-VAL", "mean/std rows recompute correctly from the fold rows", 4, gap="CV")
 def _69():
+    """Recomputes each model's mean from its own numeric fold rows.
+
+    Two bugs this originally had, both of which made it fail on a correct CSV:
+      * it pooled every architecture into one mean instead of grouping by model;
+      * it treated the ``std`` summary rows as fold data, because only ``mean``
+        was excluded. Averaging 10 folds plus 2 std values produced 0.6716 and
+        looked like a real mismatch.
+    Fourth audit bug of this shape — see the note in tracker/DAILY_LOG.md.
+    """
     rr = rows("reports/cv_results.csv")
     if not rr:
         return (NOTYET, "CV not run yet")
     col = next((c for c in ("accuracy", "val_accuracy", "acc") if rr[0].get(c)), None)
-    folds, means = [], []
+    if not col:
+        return (FAIL, "no accuracy column in cv_results.csv")
+
+    SUMMARY_TAGS = {"mean", "avg", "std", "stdev", "sd"}
+    per_model: dict[str, dict[str, list[float]]] = {}
     for r in rr:
+        model = (r.get("model") or "?").strip()
         tag = str(r.get("fold", "")).strip().lower()
         try:
             v = float(r[col])
-        except Exception:
+        except (TypeError, ValueError):
             continue
-        (means if tag in ("mean", "avg") else folds).append(v)
-    if not means:
-        return (FAIL, "no mean row in cv_results.csv")
-    if not folds:
-        return (FAIL, "no fold rows to recompute from")
-    calc = sum(folds) / len(folds)
-    close = any(abs(calc - m) < 0.02 for m in means)
-    return ok(close, f"mean row agrees (recomputed {calc:.4f})",
-              f"MEAN MISMATCH: recomputed {calc:.4f} vs reported {means}")
+        slot = per_model.setdefault(model, {"folds": [], "mean": [], "std": []})
+        if tag in ("mean", "avg"):
+            slot["mean"].append(v)
+        elif tag in SUMMARY_TAGS:
+            slot["std"].append(v)
+        else:
+            slot["folds"].append(v)
+
+    problems, checked = [], []
+    for model, d in sorted(per_model.items()):
+        if not d["folds"]:
+            problems.append(f"{model}: no numeric fold rows")
+            continue
+        if not d["mean"]:
+            problems.append(f"{model}: no mean row")
+            continue
+        calc = sum(d["folds"]) / len(d["folds"])
+        reported = d["mean"][0]
+        if abs(calc - reported) > 0.005:
+            problems.append(f"{model}: recomputed {calc:.4f} vs reported {reported:.4f}")
+        else:
+            checked.append(f"{model}={calc:.4f}")
+    return ok(not problems,
+              f"means verified from fold rows ({', '.join(checked)})",
+              "MEAN MISMATCH -> " + "; ".join(problems))
 
 
 @check(70, "CROSS-VAL", "Both CV figures exist", 4, gap="CV")

@@ -80,3 +80,35 @@ stages:
       hash: md5
       md5: a01a6090fc046621c644ad511cdb22ee
       size: 304
+  cross_validate:
+    cmd: python -m src.cross_validate --subset 4000 --epochs 8
+    deps:
+    - path: data/processed/train.csv
+      hash: md5
+      md5: 7c1ec11142f7eaff0fe9cf2452c85ec3
+      size: 3281795
+    - path: data/processed/val.csv
+      hash: md5
+      md5: 2c4889cf806224dca13434947cad03ba
+      size: 410106
+    - path: src/cross_validate.py
+      hash: md5
+      md5: 320160fb3db83bdb63d6d5e9a1b33626
+      size: 21734
+    - path: src/model.py
+      hash: md5
+      md5: c0a2c2ccb255d0d08fd7472618389770
+      size: 6458
+    outs:
+    - path: reports/cv_results.csv
+      hash: md5
+      md5: 46dc419cc5de07701677db79cc4e4570
+      size: 1679
+    - path: reports/figures/cv_comparison.png
+      hash: md5
+      md5: c94ba5cd316bdf6f9250c3554811e6c4
+      size: 46881
+    - path: reports/figures/cv_fold_scores.png
+      hash: md5
+      md5: 745ca9cba13df0938510e5aa68e05d2f
+      size: 45002

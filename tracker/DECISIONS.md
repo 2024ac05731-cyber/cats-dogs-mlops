@@ -224,21 +224,167 @@ demonstrates reproducible pipeline stages, which Git-LFS cannot.
 
 ---
 
-### ADR-005: Production model selection (placeholder — write on Day 6)
+### ADR-005: Ship the MobileNetV2 transfer model, selected by cross-validated mean
 
-**Date:** _
-**Status:** Proposed
-**Day in plan:** Day 6
+**Date:** 2026-08-18
+**Status:** Accepted
+**Day in plan:** Day 4
 
-**Context:** Two architectures cross-validated over 5 folds. One must be packaged as
-`models/model.h5` and served.
+**Context:** Two architectures needed comparing so that one could be packaged as
+`models/model.h5` and served. The point of doing this by cross-validation rather than by a single
+train/test fit is that A1 lost a mark for cross-validation being invisible, and a mark is not the
+only reason: a single 2,501-row test split is a noisy basis for a decision.
 
-**Decision:** _to be recorded once CV numbers exist._
+**Evidence — 5-fold stratified CV, 4,000-image random stratified subset of pooled train+val,
+8 epochs/fold, `random_state=42`, 31.3 min wall-clock:**
 
-**Rationale to capture:** which model won on **CV mean** (not the single test split), whether the
-std overlaps, and the inference-cost/interpretability trade-off. If the test split and the CV mean
-disagree, say so explicitly and follow CV — and explain why. That reasoning is itself the evidence
-that cross-validation was actually used for something.
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---|---|---|---|---|
+| **transfer** (MobileNetV2, frozen base) | **0.9840 ± 0.0037** | 0.9798 ± 0.0088 | 0.9885 ± 0.0025 | 0.9841 ± 0.0036 | 0.9984 ± 0.0013 |
+| baseline (from-scratch CNN) | 0.6198 ± 0.0373 | 0.7229 ± 0.1120 | 0.4915 ± 0.2429 | 0.5285 ± 0.1484 | 0.7113 ± 0.0474 |
+
+Per-fold rows in `reports/cv_results.csv`; figures in `reports/figures/cv_comparison.png` and
+`cv_fold_scores.png`; nested `fold_1`…`fold_5` runs under `cv-transfer` / `cv-baseline` in MLflow.
+
+**Options considered:**
+1. **MobileNetV2 transfer, frozen base** — CV accuracy 0.9840, and a standard deviation of 0.0037,
+   i.e. an order of magnitude tighter than the baseline's. Only 1,281 trainable parameters, so it fits
+   in ~85 s/fold. Cost: 2.26M total parameters travel in the artifact and the image.
+2. **From-scratch baseline CNN** — 0.6198 accuracy, and unstable: recall swings from 0.17 to 0.82
+   across folds (± 0.2429). Smaller artifact (242k parameters, 3.0 MB) and no pretrained dependency.
+3. **Train the baseline much longer** — it was still improving at 8 epochs. Might close some of the
+   36-point gap, but at ~290 s/fold it is already 3.5x the transfer model's cost per fold, and no
+   plausible amount of training makes a 4-block CNN on 3,200 images competitive with ImageNet
+   features.
+
+**Decision:** Ship the **transfer** model.
+
+**Rationale:** The decision is not close on the mean — 0.9840 vs 0.6198 — but the *variance* is the
+more interesting argument and the one that justifies having done CV at all. The baseline's recall
+standard deviation of 0.2429 means a single train/test split could have reported anywhere from 0.17
+to 0.82 for the same architecture; picking a model on one split would have been close to a coin
+flip on which architecture "won" on that metric. The transfer model's ± 0.0037 accuracy says its
+performance is a property of the architecture, not of the split.
+
+Secondary: the transfer model is also *cheaper* here (85 s/fold vs 290 s), because only the 1,281-parameter
+head is trained. Better and faster is an easy call.
+
+**Consequences:**
+- `models/model.h5` is the MobileNetV2 transfer model; `src/train.py --model transfer` is the
+  packaging command, and it is the `train` stage default in `dvc.yaml`.
+- The artifact carries the frozen 2.2M-parameter base, so it is larger than the baseline's 3.0 MB.
+  This propagates to the Docker image (M2) and to k8s memory limits (M4).
+- The baseline CNN stays in `src/model.py` and in the CV results. It is not dead code: it is the
+  control that makes the transfer model's number meaningful, and the CV comparison is the M1
+  deliverable.
+- Serving depends on the ImageNet weights only at *training* time. `model.h5` is self-contained, so
+  the container needs no network access — verified when the image is built on Day 6.
+- **Reported test metrics must come from the transfer model.** The `model.h5` currently committed is
+  from the Day 3 baseline validation run (accuracy 0.7180); it has to be retrained with
+  `--model transfer` before submission, or the README and metadata will understate the result.
+
+---
+
+### ADR-009: Baseline CNN architecture
+
+**Date:** 2026-08-18
+**Status:** Accepted
+**Day in plan:** Day 3
+
+**Context:** The spec asks for "at least one baseline model (e.g. a simple CNN)". It needs to be a
+credible control for the transfer model, not a strawman, but also cheap enough to cross-validate.
+
+**Decision:** Four Conv-BatchNorm-MaxPool blocks (32→64→128→128) → GlobalAveragePooling → Dropout(0.3)
+→ Dense(1, sigmoid). 242,369 parameters.
+
+**Rationale:**
+- **BatchNorm after every conv.** Inputs are only [0,1]-scaled, so without normalising intermediate
+  activations the deeper blocks train poorly at any learning rate worth using.
+- **GlobalAveragePooling instead of Flatten.** Flatten on a 14x14x128 feature map gives 25,088
+  features and a ~3.2M-parameter head; GAP gives 128 features and a 129-parameter head. On 3,200
+  images per fold that single choice is the largest overfitting guard in the model.
+- **Widths stop at 128.** Wider layers cost CV wall-clock, which is the binding constraint (ADR-005).
+
+**Consequences:** It is genuinely undertrained at 8 epochs — measured on Day 3, it needs ~11 epochs
+before it stops predicting a single class. Its CV numbers therefore represent "a small CNN given a
+CV-affordable budget", which is stated explicitly in the README rather than presented as the
+architecture's ceiling.
+
+---
+
+### ADR-010: Augmentation policy
+
+**Date:** 2026-08-18
+**Status:** Accepted
+**Day in plan:** Day 2
+
+**Context:** The spec asks for augmentation "for better generalization". Which transforms are valid
+depends on the task, and a label-destroying transform actively harms training.
+
+**Decision:** `RandomFlip("horizontal")`, `RandomRotation(0.10)`, `RandomZoom(0.10)`,
+`RandomContrast(0.10)`, then a **clip to [0,1]**. Applied in the `tf.data` pipeline and gated behind
+`augment=True`, so it cannot reach val/test.
+
+**Rationale:**
+- **Horizontal flip only.** A mirrored pet is still the same species. Vertical flip is rejected:
+  upside-down animals do not occur in adoption-listing photos, so it would spend model capacity on
+  invariance to inputs that never arrive.
+- **Small rotation and zoom** mimic the real variation in user-submitted photos — the EDA sample grid
+  shows wide framing and aspect-ratio variation.
+- **Mild contrast** covers lighting differences without distorting colour, which matters because
+  colour is genuinely informative for this task.
+- **The clip is not cosmetic.** Measured during Day 2: `RandomContrast` pushed values to 1.02, and
+  `build_transfer_model`'s `Rescaling(2.0, -1.0)` layer assumes a clean [0,1] input when mapping to
+  MobileNetV2's [-1,1] range. Without clipping, augmented inputs silently violate that contract.
+
+**Consequences:** Augmentation is verified visually in `reports/figures/augmentation_grid.png`, which
+prints the observed output range — that figure is how the 1.02 overflow was caught in the first place.
+Applied as a dataset `map`, never as a model layer, so it is not serialized into the served artifact.
+
+---
+
+### ADR-011: No GPU acceleration — tensorflow-metal is incompatible with TF 2.20
+
+**Date:** 2026-08-18
+**Status:** Accepted
+**Day in plan:** Day 4
+
+**Context:** Training runs on an Apple M4 Pro (14 CPU cores, 20 GPU cores) and TF reports
+`GPU devices: []`. Profiling showed model compute at 18.3 ms/image versus data loading at 1.25 ms/image,
+so compute is the bottleneck by ~15x and GPU acceleration would genuinely help.
+
+**Options considered:**
+1. **Install `tensorflow-metal`** — the Apple Metal plugin, which would use the integrated GPU.
+2. **Downgrade TensorFlow to ~2.17** so a compatible `tensorflow-metal` can be used.
+3. **Stay on CPU.**
+
+**Decision:** Option 3, stay on CPU.
+
+**Rationale:** `tensorflow-metal 1.2.0` (the newest release, built for ~TF 2.17) **fails to load
+under TF 2.20**, tested in an isolated venv:
+
+```
+NotFoundError: dlopen(libmetal_plugin.dylib):
+  Library not loaded: @rpath/_pywrap_tensorflow_internal.so
+```
+
+It declares no TF version constraint, so pip installs it without complaint and TensorFlow then fails
+at *import*. Installing it into the project venv would have taken the project offline entirely.
+
+Downgrading to TF 2.17 to regain Metal was considered and rejected on timing: the compute-heavy phase
+is finished. CV is complete (31.3 min) and the remaining days are API, Docker, CI, k8s and inference —
+none training-bound. The only significant run left is an optional full-data final fit (~34 min). A
+downgrade would require re-pinning both requirements files, re-verifying `tensorflow-cpu 2.17` for
+linux/amd64, re-checking the `.h5` round-trip, and re-running CV — hours of work and new risk to save
+tens of minutes.
+
+**Consequences:**
+- All reported timings are CPU timings on an M4 Pro; recorded in `model_metadata.json` and the README
+  so nobody misreads them as GPU numbers.
+- If a future full-data CV run is wanted, budget ~5.7 h or keep the documented subset.
+- `requirements.txt` deliberately does **not** list `tensorflow-metal`. Anyone adding it must
+  downgrade TensorFlow first, and the audit's pin-consistency check (14) would flag the resulting skew
+  against `requirements-serve.txt`.
 
 ---
 

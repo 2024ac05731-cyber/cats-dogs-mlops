@@ -324,3 +324,70 @@ recall 0.8240, F1 0.7450, ROC-AUC 0.8129. Both classes predicted; MLflow run log
   README `## Cross-validation` section, ADR-005.
 
 **Commits:** see `git log` (10 pushed to origin/main)
+
+---
+
+### 2026-08-18 — Day 4 (cross-validation — the PROTECTED day)
+
+**Time spent:** ~3 h (plus 31 min unattended CV wall-clock)
+**Sub-tasks completed:** all of Day 4
+**Status at end of day:** M1 complete bar MLflow screenshots; 4/10 days done
+
+**What I did — the A1 mark-loss fix, delivered:**
+- `src/cross_validate.py`: `StratifiedKFold(5, shuffle=True, random_state=42)` over pooled train+val,
+  both architectures, model rebuilt **and recompiled** per fold.
+- **Result: transfer 0.9840 ± 0.0037 accuracy vs baseline 0.6198 ± 0.0373.** 10 fits, 31.3 min.
+- Artifacts: `reports/cv_results.csv` (10 fold rows + 4 summary rows), `cv_comparison.png`,
+  `cv_fold_scores.png`, 2 parent + 10 nested `fold_N` MLflow runs.
+- README `## Cross-validation` section with the full per-fold table, protocol table, and both figures.
+- ADR-005 (selection by CV mean), ADR-009 (baseline architecture), ADR-010 (augmentation policy),
+  ADR-011 (no GPU — see below).
+- `cross_validate` DVC stage added; `dvc status` clean; DAG now shows 3 stages + `data/raw.dvc`.
+- `tests/test_model.py` — M3's required model/inference test. Suite now **39 passing**.
+
+**Guardrail evidence — all twelve `[GAP-CV]` audit checks PASS.** Per-fold rows exist, fold scores
+differ, means recompute by hand (0.619750 / 0.984000 exactly), test split provably untouched, README
+heading present with a table, ADR records selection by CV mean.
+
+**What worked:**
+- Verifying fold isolation rather than assuming it. `verify_fold_isolation()` hashes every weight
+  tensor before/after each fit and checks three properties. Weight leakage between folds *inflates*
+  scores, so it would never announce itself — the only defence is a positive check.
+- Running a 400-image/1-epoch rehearsal before the 31-minute run. Caught two output bugs cheaply.
+- The variance turned out to be the real argument, not the mean. Baseline recall std of ±0.2429 means
+  a single split could have reported 0.17 or 0.82 for the same architecture. That is the concrete
+  case for why CV matters, and it went into ADR-005 and the README.
+
+**What didn't / blockers:**
+- **GPU is unavailable.** Profiled first: compute 18.3 ms/img vs data loading 1.25 ms/img, so GPU
+  *would* help ~15x. But `tensorflow-metal 1.2.0` (newest, built for ~TF 2.17) **fails to load under
+  TF 2.20** with a dlopen error, tested in an isolated venv. It declares no TF version pin, so pip
+  installs it happily and TensorFlow then dies at import — installing into the project venv would
+  have taken the project offline. Downgrading TF to regain Metal was rejected on timing: the
+  compute-heavy phase is over. ADR-011.
+- Also corrected a misconception worth recording: the M4 Pro has **one GPU with 20 cores**, not 20
+  GPUs.
+- **Fourth audit bug of the same shape.** Check 69 pooled both architectures into one mean AND counted
+  the `std` summary rows as fold data, yielding 0.6716 and a false failure on a correct CSV. Pattern
+  now unmistakable: my checks keep encoding the same assumptions as the code they check (basename
+  matching twice, dvc.yaml-as-dataset-versioning, now row-tag handling). **The audit is a useful
+  ratchet but not an independent witness** — worth stating plainly rather than trusting it as one.
+- `models/model.h5` is still the Day 3 **baseline** validation artifact (accuracy 0.7180). Must be
+  retrained with `--model transfer` before submission or the shipped model contradicts ADR-005.
+  Recorded in ADR-005 consequences.
+
+**Decisions made:** ADR-005, ADR-009, ADR-010, ADR-011 (all Accepted).
+
+**Evidence captured:** `cv_comparison.png`, `cv_fold_scores.png`, `cv_results.csv`. Still to capture:
+MLflow UI screenshots (the nested fold runs are the shot that matters).
+
+**Guardrail check:**
+- Rule 2 (three artifacts) satisfied for CV: code + CSV + figures + README section + MLflow runs.
+- Rule 3 (per-unit before aggregate) is what check 69 enforces, and what caught my own arithmetic.
+- Rule 8: the 4,000-image subset is documented in the module docstring, ADR-005 and the README.
+- Audit at day 4: **62 pass · 1 fail (uncommitted work) · 35 not-yet**.
+
+**Tomorrow (Day 5):** retrain the transfer model as the shipped artifact, capture MLflow screenshots
+to close M1, then `src/predict.py` + `api/main.py` (FastAPI /health, /predict, /predict/base64, /).
+
+**Commits:** see `git log`

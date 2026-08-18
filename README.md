@@ -36,14 +36,75 @@ training split only.
 
 ## Cross-validation
 
-_Populated on Day 4 by `python -m src.cross_validate`. Per-fold results live in
-`reports/cv_results.csv`; figures in `reports/figures/cv_comparison.png` and
-`cv_fold_scores.png`. The production model is selected by CV mean, not by a
-single test split — see ADR-005 in `tracker/DECISIONS.md`._
+**5-fold stratified cross-validation**, run by `python -m src.cross_validate`. Per-fold results are
+in [`reports/cv_results.csv`](reports/cv_results.csv); figures below; nested `fold_1`…`fold_5` runs
+sit under `cv-transfer` / `cv-baseline` in MLflow.
 
-| Model | Fold | Accuracy | Precision | Recall | F1 | ROC-AUC |
-|-------|------|----------|-----------|--------|----|---------|
-| _pending_ | | | | | | |
+### Summary — mean ± std over 5 folds
+
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---|---|---|---|---|
+| **MobileNetV2 transfer** | **0.9840 ± 0.0037** | 0.9798 ± 0.0088 | 0.9885 ± 0.0025 | 0.9841 ± 0.0036 | 0.9984 ± 0.0013 |
+| Baseline CNN (from scratch) | 0.6198 ± 0.0373 | 0.7229 ± 0.1120 | 0.4915 ± 0.2429 | 0.5285 ± 0.1484 | 0.7113 ± 0.0474 |
+
+### Per-fold results
+
+Reported individually, not just as a mean: an aggregate with no visible components can't be verified.
+
+| Model | Fold | Accuracy | Precision | Recall | F1 | ROC-AUC | Time |
+|---|---|---|---|---|---|---|---|
+| transfer | 1 | 0.9825 | 0.9730 | 0.9925 | 0.9827 | 0.9961 | 82 s |
+| transfer | 2 | 0.9788 | 0.9682 | 0.9900 | 0.9790 | 0.9985 | 82 s |
+| transfer | 3 | 0.9825 | 0.9777 | 0.9875 | 0.9826 | 0.9984 | 85 s |
+| transfer | 4 | 0.9888 | 0.9900 | 0.9875 | 0.9887 | 0.9996 | 98 s |
+| transfer | 5 | 0.9875 | 0.9899 | 0.9850 | 0.9875 | 0.9995 | 88 s |
+| baseline | 1 | 0.6388 | 0.8447 | 0.3400 | 0.4848 | 0.7633 | 262 s |
+| baseline | 2 | 0.6813 | 0.6659 | 0.7275 | 0.6953 | 0.7603 | 269 s |
+| baseline | 3 | 0.6000 | 0.6667 | 0.4000 | 0.5000 | 0.6435 | 294 s |
+| baseline | 4 | 0.5725 | 0.8625 | 0.1725 | 0.2875 | 0.6725 | 297 s |
+| baseline | 5 | 0.6062 | 0.5747 | 0.8175 | 0.6749 | 0.7169 | 293 s |
+
+![CV comparison](reports/figures/cv_comparison.png)
+![Per-fold scores](reports/figures/cv_fold_scores.png)
+
+### Protocol
+
+| | |
+|---|---|
+| Splitter | `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)` |
+| Pool | pooled **train + val** (22,496 files); the 2,501-file **test split is never touched** |
+| Subset | 4,000 files, sampled **randomly and stratified** under `random_state=42` |
+| Per fold | 3,200 train / 800 validate, 8 epochs, batch 32, Adam @ 1e-3 |
+| Total | 10 fits, **31.3 min** wall-clock (CPU, Apple M4 Pro — see ADR-011) |
+
+**Why a subset:** measured at ~10 ms/image/epoch on this CPU, 5 folds × 2 architectures over the full
+22,496 pooled files would take ~5.7 hours versus ~31 min at 4,000. The reduction is deliberate and
+recorded here rather than left implicit.
+
+**Fold isolation is verified, not assumed.** Reusing a compiled Keras model across folds would carry
+both learned weights *and* optimizer momentum into the next fold, leaking the held-out data — and it
+would make the scores look *better*, so it can't be left to chance. `verify_fold_isolation()` hashes
+every weight tensor before and after each fit and asserts three properties: initial fingerprints
+identical across folds (the model really was rebuilt), trained ≠ initial (the fit did something), and
+trained fingerprints distinct between folds (the folds really differ). The run reports:
+
+```
+[cv] verified: 0 of 2,501 test files present in the CV pool
+[cv] verified: model rebuilt+recompiled per fold, no weight or optimizer
+     state carried across fold boundaries
+```
+
+### What CV decided
+
+The production model is selected **by CV mean, not by a single test split** (ADR-005). The means are
+not close, but the *variance* is the more telling result: the baseline's recall standard deviation of
+**± 0.2429** means one train/test split could have reported anywhere from 0.17 to 0.82 for that same
+architecture. The transfer model's **± 0.0037** accuracy says its performance is a property of the
+architecture rather than of the split — which is exactly what cross-validation exists to establish.
+
+The baseline is a genuine control, not a strawman, but it is also undertrained at 8 epochs: it needs
+~11 before it stops collapsing to a single class (ADR-009). Its numbers represent "a small CNN on a
+CV-affordable budget", not the architecture's ceiling.
 
 ## Results
 

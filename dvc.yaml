@@ -58,5 +58,20 @@ stages:
       - reports/figures/roc_curve.png:
           cache: false
 
-# The cross_validate stage is added on Day 4, once src/cross_validate.py exists.
-# Declaring a stage whose script is missing breaks `dvc repro` outright.
+  cross_validate:
+    # Deliberately a separate stage: cross-validation is a graded deliverable in
+    # its own right, not a side effect of training (see tracker/GUARDRAILS.md).
+    cmd: python -m src.cross_validate --subset 4000 --epochs 8
+    deps:
+      - src/model.py
+      - src/cross_validate.py
+      - data/processed/train.csv
+      - data/processed/val.csv
+    metrics:
+      - reports/cv_results.csv:
+          cache: false
+    plots:
+      - reports/figures/cv_comparison.png:
+          cache: false
+      - reports/figures/cv_fold_scores.png:
+          cache: false
