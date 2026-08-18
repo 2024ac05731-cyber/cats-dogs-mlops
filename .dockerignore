@@ -1,0 +1,58 @@
+# Keep the build context small: only src/, api/, requirements-serve.txt and the
+# two model artifacts need to reach the image. Without this, `docker build` would
+# upload the 858MB dataset and the DVC cache as build context before running a
+# single instruction.
+
+# Data — by far the biggest win here
+data/
+.dvc/
+*.dvc
+
+# Experiment tracking
+mlruns/
+mlartifacts/
+
+# Virtualenv and Python caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# Not part of the runtime image
+tests/
+tracker/
+notebooks/
+reports/
+scripts/
+.github/
+k8s/
+argocd/
+monitoring/
+
+# Model artifacts: the two the API needs are COPYed explicitly in the Dockerfile,
+# so exclude everything else here (checkpoints, alternate architectures).
+models/*
+!models/model.h5
+!models/model_metadata.json
+
+# Git and editor/OS junk
+.git/
+.gitignore
+.DS_Store
+*.swp
+
+# Docs and config not used at runtime
+README.md
+CLAUDE.md
+pytest.ini
+conftest.py
+ruff.toml
+dvc.yaml
+dvc.lock
+requirements.txt
+Dockerfile
+.dockerignore

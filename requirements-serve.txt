@@ -1,0 +1,35 @@
+# Serving-only dependencies for the Docker image (M2).
+#
+# This is the subset of requirements.txt that the API actually imports at request
+# time: FastAPI + uvicorn to serve, and TensorFlow to load and run model.h5. The
+# training and analysis packages (mlflow, dvc, matplotlib, seaborn, notebook,
+# kaggle, scikit-learn, pandas, pytest) are deliberately absent — they would add
+# hundreds of MB to an image that is already large because of TensorFlow.
+#
+# CRITICAL (ADR-002): the tensorflow / numpy / pillow / h5py pins below MUST match
+# requirements.txt exactly. A skew there can fail to load models/model.h5 or
+# silently shift predictions, and audit check 14 fails the build if they diverge.
+#
+# Why tensorflow-cpu and not tensorflow: the image targets linux/amd64, where
+# tensorflow-cpu is the smaller CPU-only build. It stops at 2.20.0 on PyPI, which
+# is exactly why requirements.txt pins tensorflow==2.20.0 rather than the newer
+# 2.21.0 — verified on Day 1. Audit check 15 asserts this version actually exists.
+
+# --- Inference-critical: must match requirements.txt ---
+tensorflow-cpu==2.20.0
+keras==3.15.1
+numpy==2.4.6
+pillow==12.3.0
+h5py==3.14.0
+
+# --- API serving ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+pydantic==2.13.4
+# Required for multipart/form-data, i.e. the /predict file upload. FastAPI raises
+# at import time without it, so omitting it breaks the container at startup.
+python-multipart==0.0.32
+
+# --- Observability (M5) ---
+python-json-logger==4.1.0
+prometheus-fastapi-instrumentator==8.1.0
