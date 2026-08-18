@@ -1,5 +1,6 @@
 # Corrupt / unreadable image files found by src.data.audit_images.
+# Includes files Pillow only WARNS about (truncated reads), which it
+# otherwise pads with grey and passes through silently.
 # Excluded from the split manifests by src.preprocess (never skipped
 # at training time, which would fail mid-epoch).
-data/raw/SyntheticPetImages/Cat/cat_truncated.jpg
-data/raw/SyntheticPetImages/Dog/dog_empty.jpg
+data/raw/PetImages/Dog/9041.jpg

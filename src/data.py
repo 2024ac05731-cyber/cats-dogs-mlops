@@ -101,11 +101,22 @@ def audit_images(
 ) -> tuple[list[tuple[Path, int]], list[Path]]:
     """Split images into (usable, corrupt).
 
-    Verification is two-pass on purpose: ``Image.verify()`` catches structural
-    damage but consumes the file handle and does *not* catch truncation during
-    decode, so each candidate is then fully loaded and converted. Zero-byte
-    files are rejected up front.
+    Verification is three-pass on purpose:
+
+      1. Zero-byte files are rejected up front.
+      2. ``Image.verify()`` catches structural damage, but consumes the file
+         handle and does *not* detect truncation during decode.
+      3. A full ``convert("RGB").load()`` with **warnings escalated to errors**.
+
+    That last detail is load-bearing. Pillow does not raise on a truncated JPEG —
+    it emits ``UserWarning: Truncated File Read`` and silently pads the missing
+    scanlines with grey. Catching only exceptions therefore lets a partially
+    garbage image through into training. Measured on the real dataset: one file
+    (``PetImages/Dog/9041.jpg``) is truncated this way and was passing the audit
+    until warnings were escalated.
     """
+    import warnings
+
     from PIL import Image
 
     if items is None:
@@ -120,9 +131,11 @@ def audit_images(
                 bad.append(path)
                 continue
             with Image.open(path) as im:
-                im.verify()                     # pass 1: structural
-            with Image.open(path) as im:
-                im.convert("RGB").load()        # pass 2: full decode
+                im.verify()                     # pass 2: structural
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")  # pass 3: truncation warns, so make it raise
+                with Image.open(path) as im:
+                    im.convert("RGB").load()
             good.append((path, label))
         except Exception:
             bad.append(path)
@@ -131,6 +144,8 @@ def audit_images(
         CORRUPT_REPORT.parent.mkdir(parents=True, exist_ok=True)
         header = (
             "# Corrupt / unreadable image files found by src.data.audit_images.\n"
+            "# Includes files Pillow only WARNS about (truncated reads), which it\n"
+            "# otherwise pads with grey and passes through silently.\n"
             "# Excluded from the split manifests by src.preprocess (never skipped\n"
             "# at training time, which would fail mid-epoch).\n"
         )

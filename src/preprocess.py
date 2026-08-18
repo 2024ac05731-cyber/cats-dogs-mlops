@@ -49,6 +49,19 @@ def manifest_path(split: str) -> Path:
     return PROCESSED_DIR / f"{split}.csv"
 
 
+def _display(path: Path) -> str:
+    """Repo-relative path for logging, falling back to absolute.
+
+    ``Path.relative_to`` raises when the target is outside ROOT, which happens
+    whenever PROCESSED_DIR is redirected (tests, or a caller writing elsewhere).
+    A cosmetic log line must not be able to abort manifest building.
+    """
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 # --------------------------------------------------------------- image loading
 
 def load_image(source, target_size: tuple[int, int] = IMG_SIZE) -> np.ndarray:
@@ -61,20 +74,30 @@ def load_image(source, target_size: tuple[int, int] = IMG_SIZE) -> np.ndarray:
 
     Raises ``ValueError`` on anything that cannot be decoded, so the API can turn
     that into a clean 422 instead of a stack trace.
+
+    Truncated JPEGs are treated as undecodable. Pillow does not raise on them —
+    it warns and pads the missing scanlines with grey — so the truncation warning
+    is escalated to an error here. Only that warning is escalated; escalating all
+    of them would reject valid images over benign EXIF complaints. This keeps the
+    serving path consistent with ``src.data.audit_images``, so an image the audit
+    rejected can't be silently accepted at inference time.
     """
     import io
+    import warnings
 
     from PIL import Image
 
     try:
-        if isinstance(source, (bytes, bytearray)):
-            im = Image.open(io.BytesIO(bytes(source)))
-        else:
-            im = Image.open(source)
-        with im:
-            im = im.convert("RGB")                      # greyscale/RGBA -> 3 channels
-            im = im.resize(target_size, Image.BILINEAR)
-            arr = np.asarray(im, dtype="float32") / 255.0
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message=".*[Tt]runcated.*")
+            if isinstance(source, (bytes, bytearray)):
+                im = Image.open(io.BytesIO(bytes(source)))
+            else:
+                im = Image.open(source)
+            with im:
+                im = im.convert("RGB")                      # greyscale/RGBA -> 3 channels
+                im = im.resize(target_size, Image.BILINEAR)
+                arr = np.asarray(im, dtype="float32") / 255.0
     except Exception as exc:   # any Pillow failure -> a clean ValueError for the API
         raise ValueError(f"could not decode image: {exc}") from exc
 
@@ -107,9 +130,13 @@ def build_split_manifests(
     else:
         corrupt = load_corrupt_list()
         if corrupt:
+            # Match on the repo-relative path ONLY, never the bare filename.
+            # PetImages numbers files per class, so Cat/9041.jpg and Dog/9041.jpg
+            # both exist — a basename match discarded the healthy cat image along
+            # with the truncated dog one.
             def is_corrupt(p: Path) -> bool:
                 rel = str(p.relative_to(ROOT)) if ROOT in p.parents else str(p)
-                return rel in corrupt or p.name in {Path(c).name for c in corrupt}
+                return rel in corrupt
             items = [(p, y) for p, y in items if not is_corrupt(p)]
 
     if not items:
@@ -141,7 +168,7 @@ def build_split_manifests(
             w = csv.writer(fh)
             w.writerow(["filepath", "label"])
             w.writerows(recs)
-        print(f"[preprocess] wrote {manifest_path(split).relative_to(ROOT)} ({len(recs)} rows)")
+        print(f"[preprocess] wrote {_display(manifest_path(split))} ({len(recs)} rows)")
 
     return out
 
