@@ -1173,15 +1173,32 @@ def _95():
 
 @check(96, "CD", "Deployment references a SHA tag, not :latest (traceability)", 8, gap="CICD")
 def _96():
+    """A SHA tag is what makes commit->pod traceability possible (Rule 7).
+
+    Recognises the pre-first-deploy placeholder as NOT-YET rather than a failure:
+    before CD has ever run there is no SHA to reference, and the manifest carries a
+    deliberately invalid tag so the situation fails loudly in-cluster instead of
+    silently pulling :latest. Flagging that as a hard failure would just invite
+    hand-editing a fake SHA in, which defeats the GitOps flow the check exists to
+    protect.
+    """
     y = read("k8s/deployment.yaml")
     if not y:
         return (NOTYET, "not written yet")
-    m = re.search(r"image:\s*(\S+)", y)
+    m = re.search(r"^\s*image:\s*(\S+)", y, re.MULTILINE)
     if not m:
         return (FAIL, "no image: line")
     img = m.group(1)
-    return ok(not img.endswith(":latest"), f"image={img}",
-              f"image={img} — :latest breaks commit->pod traceability (Rule 7)")
+    tag = img.rsplit(":", 1)[-1] if ":" in img else ""
+
+    if "PLACEHOLDER" in tag.upper():
+        return (NOTYET, f"tag is the pre-deploy placeholder ({tag}); "
+                        "cd.yml rewrites it on the first successful publish")
+    if tag in ("latest", ""):
+        return (FAIL, f"image={img} — :latest breaks commit->pod traceability (Rule 7)")
+    if not re.fullmatch(r"[0-9a-f]{7,40}", tag):
+        return (FAIL, f"tag {tag!r} is not a commit SHA — traceability unclear")
+    return (PASS, f"SHA-tagged: {tag[:12]}")
 
 
 @check(97, "CD", "Argo CD Application + post-deploy smoke test exist", 8, gap="CICD")

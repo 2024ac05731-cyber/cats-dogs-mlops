@@ -35,7 +35,14 @@ spec:
       containers:
         - name: catdog-api
           # IMAGE_TAG_MANAGED_BY_CI — do not hand-edit; cd.yml rewrites this line.
-          image: ghcr.io/2024ac05731-cyber/catdog-api:latest
+          #
+          # The placeholder is a deliberately INVALID tag, not `:latest`. With
+          # `:latest` this manifest would deploy *something* even if the GitOps bump
+          # never ran — working but untraceable, which is the failure mode Rule 7
+          # exists to prevent. An unresolvable tag fails loudly with
+          # ImagePullBackOff instead, so "CD never ran" is impossible to mistake
+          # for success.
+          image: ghcr.io/2024ac05731-cyber/catdog-api:PLACEHOLDER-REPLACED-BY-CD
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

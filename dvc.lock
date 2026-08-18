@@ -93,8 +93,8 @@ stages:
       size: 410106
     - path: src/cross_validate.py
       hash: md5
-      md5: 320160fb3db83bdb63d6d5e9a1b33626
-      size: 21734
+      md5: 462e5824ffd112fc518d1c557cfe5921
+      size: 22178
     - path: src/model.py
       hash: md5
       md5: c0a2c2ccb255d0d08fd7472618389770

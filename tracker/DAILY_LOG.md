@@ -391,3 +391,77 @@ MLflow UI screenshots (the nested fold runs are the shot that matters).
 to close M1, then `src/predict.py` + `api/main.py` (FastAPI /health, /predict, /predict/base64, /).
 
 **Commits:** see `git log`
+
+---
+
+### 2026-08-18 — Days 5-9 (API, container, CI/CD, monitoring)
+
+**Time spent:** ~7 h
+**Status at end of day:** 9/10 days of code complete; remaining work needs a cluster
+
+**What I did:**
+- **M2 complete and container-verified.** `src/predict.py`, `api/main.py` (6 routes),
+  `tests/test_api.py`. Image 428MB content; healthy in 4s; runs as `appuser`; known cat ->
+  `cat` @0.999999, dog -> `dog` @0.999874, corrupt -> 422.
+- **Shipped the transfer model** on full data: test accuracy **0.9924**, F1 0.9924, ROC-AUC 0.9997.
+  Re-verified independently at 0.9917 on 120 real test images.
+- **M3 CI**: six gated jobs (lint, test, build, image-smoke, security, publish). `publish` is gated
+  on `image-smoke`, not `build` — nothing reaches GHCR until the image has served a *correct*
+  prediction. Multi-arch (amd64+arm64) with a manifest assertion.
+- **M4**: k8s Deployment/Service/ServiceMonitor, Argo CD Application with prune+selfHeal,
+  `cd.yml` (gitops-bump -> verify -> rollback), `scripts/smoke_test_deployed.py`.
+- **M5**: `monitoring/README.md`, an authored `grafana_dashboard.json` (4 panels), and
+  `scripts/replay_batch.py` validated live: **live accuracy 1.0000 vs offline 0.9924**,
+  latency p50 45ms / p95 64ms, 0 errors over 60 requests.
+- Suite now **64 tests**; audit at day 9: **92 pass, 1 fail (this log), 4 not-yet**.
+
+**Bugs found and fixed — five, all by running things rather than reading them:**
+1. **`python-multipart` missing entirely.** FastAPI raises at import without it, so `/predict` would
+   have failed at container startup. Found by the API tests before the image was ever built.
+2. **Docker build failed on arm64.** `tensorflow-cpu` is published for linux/amd64 ONLY, and
+   `docker build` on Apple Silicon defaults to linux/arm64. My Day 1 check verified
+   `manylinux2014_x86_64` — the right question, the wrong architecture. Fixed with
+   `platform_machine` markers; both branches pin 2.20.0 so the trained-model version is unchanged.
+3. **The audit's pin parser did not understand PEP 508 markers.** Left alone, the TF line would have
+   stopped parsing and check 14 would have "passed" while comparing nothing. A check that silently
+   stops checking is worse than one that fails.
+4. **CI would have gone red on missing imports.** Static analysis before pushing found `matplotlib`
+   module-level in `src/cross_validate.py` (which `test_model.py` imports) and `scikit-learn` needed
+   at runtime by `test_preprocess.py`. matplotlib is now imported lazily inside the plot helpers —
+   reaching `weights_fingerprint()` should not require a plotting stack.
+5. **Fixtures were synthetic colour blobs**, so a pet-trained model classified both as "dog". The
+   strongest assertion available was "these two probabilities differ", which would NOT catch an
+   inverted class mapping. Replaced with real 160x160 test-split crops; tests now assert the correct
+   *label*.
+
+**A measurement error worth recording:** verifying the smoke gate, `$?` after a pipe returned
+`tail`'s status, so both the pass and fail paths reported 0 and the gate looked broken. Re-measured
+properly: exits 1 on failure, 0 on success. Nearly reported a working gate as broken.
+
+**Decisions made:**
+- ADR-011 (no GPU: tensorflow-metal fails to dlopen under TF 2.20).
+- Multi-arch publish chosen over arm64-only: CI runners are amd64, the cluster is arm64, and "the
+  image my cluster runs is the image CI published" is the claim M4 is graded on. `build` stays
+  single-arch because `load: true` cannot load a multi-platform build.
+- `k8s/deployment.yaml` placeholder is a deliberately INVALID tag, not `:latest`. With `:latest` the
+  manifest would deploy *something* even if the GitOps bump never ran — working but untraceable,
+  the exact failure Rule 7 exists to prevent. An unresolvable tag fails loudly instead.
+
+**Guardrail check:**
+- Rule 6 (demonstrate, don't assert) drove the smoke-gate exit-code verification and the
+  `imagetools inspect` manifest assertion.
+- **Audit-quality note, fifth instance:** my checks keep sharing the assumptions of the code they
+  check (basename matching twice, dvc.yaml-as-dataset-versioning, CV row tags, PEP 508 markers). The
+  audit is a ratchet, not an independent witness. Stated plainly here because I have been quoting its
+  pass counts as evidence.
+
+**Blocked on infrastructure (not code):**
+- First CI run is in flight; result unknown at time of writing.
+- `verify` job needs a **self-hosted runner** labelled `minikube`, or it queues forever — that is the
+  smoke gate and rollback, 10 marks of M4.
+- Minikube + Argo CD + kube-prometheus-stack need installing to capture the M4/M5 screenshots.
+
+**Tomorrow (Day 10):** cluster bring-up, Argo CD sync, prove the red-CI and rollback paths, capture
+all screenshots, architecture diagram, README rubric map, video, zip.
+
+**Commits:** see `git log` (Days 5-9)
