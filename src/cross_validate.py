@@ -45,10 +45,6 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 # MLflow 3.x raises on the file store unless this is set (see src/train.py).
 os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
 from src.data import RANDOM_STATE, ROOT
@@ -280,8 +276,25 @@ def write_cv_csv(records: list[dict], summary: dict, path=CV_RESULTS_PATH) -> No
           f"({len(records)} fold rows + {2 * len(summary)} summary rows)")
 
 
+def _pyplot():
+    """Import pyplot lazily with a headless backend.
+
+    Kept out of module scope deliberately: matplotlib is only needed to *emit*
+    figures, so importing this module for weights_fingerprint() or run_fold()
+    should not require it. That also keeps the CI test job on the serving
+    dependency subset instead of pulling the full plotting stack.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    return plt
+
+
 def plot_cv_comparison(summary: dict, save_dir=FIG_DIR) -> str:
     """Mean +/- std per metric, grouped by architecture."""
+    plt = _pyplot()
     archs = sorted(summary)
     x = np.arange(len(METRIC_KEYS))
     width = 0.8 / max(len(archs), 1)
@@ -317,6 +330,7 @@ def plot_fold_scores(records: list[dict], summary: dict, save_dir=FIG_DIR) -> st
     A mean alone hides whether one fold carried the result. This is the figure
     that makes "cross-validation actually ran" self-evident.
     """
+    plt = _pyplot()
     fig, ax = plt.subplots(figsize=(8, 4.6))
     for arch in sorted(summary):
         rows_ = sorted((r for r in records if r["model"] == arch),

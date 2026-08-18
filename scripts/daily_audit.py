@@ -77,10 +77,16 @@ def read(rel: str) -> str:
 
 
 def pins(rel: str) -> dict[str, str]:
-    """Parse ``pkg==ver`` lines from a requirements file, lowercased keys."""
+    """Parse ``pkg==ver`` lines, tolerating PEP 508 environment markers.
+
+    requirements-serve.txt pins TensorFlow conditionally on platform_machine
+    (tensorflow-cpu has no arm64 Linux wheel — see ADR-002), so the marker after
+    ``;`` has to be stripped before matching. Without that the TF line stops
+    parsing and check 14 quietly passes while comparing nothing.
+    """
     out = {}
-    for line in read(rel).splitlines():
-        line = line.split("#")[0].strip()
+    for raw in read(rel).splitlines():
+        line = raw.split("#")[0].split(";")[0].strip()
         m = re.match(r"^([A-Za-z0-9._-]+)\s*(?:\[[^\]]*\])?\s*==\s*([A-Za-z0-9._+!-]+)$", line)
         if m:
             out[m.group(1).lower().replace("_", "-")] = m.group(2)
@@ -222,10 +228,16 @@ def _14():
     for p in crit:
         if p in a and p in b and a[p] != b[p]:
             diffs.append(f"{p}: train={a[p]} serve={b[p]}")
+    # Serve may pin tensorflow-cpu (amd64) and/or tensorflow (arm64); every
+    # TensorFlow version present must equal the training pin, whatever the
+    # distribution name.
     tf_t = a.get("tensorflow") or a.get("tensorflow-cpu")
-    tf_s = b.get("tensorflow-cpu") or b.get("tensorflow")
-    if tf_t and tf_s and tf_t != tf_s:
-        diffs.append(f"tensorflow: train={tf_t} serve={tf_s}")
+    tf_serve = {k: v for k, v in b.items() if k in ("tensorflow", "tensorflow-cpu")}
+    if not tf_serve:
+        diffs.append("no tensorflow pin found in requirements-serve.txt")
+    for name, ver in sorted(tf_serve.items()):
+        if tf_t and ver != tf_t:
+            diffs.append(f"{name}: train={tf_t} serve={ver}")
     return ok(not diffs, f"aligned (tf={tf_t})", f"SKEW -> {'; '.join(diffs)}")
 
 
@@ -235,7 +247,10 @@ def _15():
     b = pins("requirements-serve.txt")
     v = b.get("tensorflow-cpu")
     if not v:
-        return (NOTYET, "tensorflow-cpu not pinned yet")
+        # arm64-only pinning is legitimate; plain tensorflow covers both arches.
+        if b.get("tensorflow"):
+            return (PASS, f"tensorflow=={b['tensorflow']} (covers amd64 and arm64)")
+        return (NOTYET, "no tensorflow pin in requirements-serve.txt yet")
     try:
         maj, mnr = (int(x) for x in v.split(".")[:2])
     except Exception:

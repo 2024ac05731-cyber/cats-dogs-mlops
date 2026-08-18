@@ -1,0 +1,339 @@
+# Continuous Integration (M3).
+#
+# Assignment 1 was marked "thin CI/CD". Its pipeline had two jobs — lint+test, and
+# a docker build that was thrown away. This one is deliberately deeper, and every
+# stage below exists because the rubric names it or because a gate is only
+# credible if it can be shown failing:
+#
+#   lint         ruff, fails fast and cheaply
+#   test         pytest + coverage, JUnit XML uploaded as an artifact
+#   build        buildx image build with layer cache; on PRs it does NOT push
+#   image-smoke  runs the built image and hits /health and /predict inside CI
+#   security     Trivy scan of the image
+#   publish      pushes to GHCR tagged by commit SHA *and* latest, main only
+#
+# Gating is the point: `needs:` means a failing test skips build/publish rather
+# than merely reporting red beside a published image. Proven on purpose by
+# breaking a test — see tracker/EVIDENCE.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref: pushing twice quickly shouldn't burn
+# two full TensorFlow installs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege by default; publish widens it for itself only.
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/catdog-api
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # Only ruff, pinned to the same version as requirements.txt. Installing the
+      # full stack here would add ~3 minutes to a job whose whole purpose is to
+      # fail in seconds.
+      - name: Install ruff
+        run: pip install "ruff==0.16.3"
+
+      - name: ruff check
+        run: ruff check . --output-format=github
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-serve.txt
+
+      # requirements-serve.txt + test tools, NOT requirements.txt. The serving
+      # subset already carries tensorflow-cpu, numpy, pillow and h5py — the pins
+      # that determine model behaviour — while omitting mlflow, dvc, matplotlib,
+      # notebook and kaggle, which no test imports. Cuts install time roughly in
+      # half and means CI exercises the same dependency set the container ships.
+      - name: Install serving + test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-serve.txt
+          # scikit-learn is not a serving dependency, but src.preprocess uses
+          # train_test_split to build the split manifests and tests/test_preprocess.py
+          # exercises that path. Verified by static import analysis before pushing,
+          # rather than discovered as a red CI run.
+          pip install "pytest==9.1.1" "pytest-cov==7.1.0" "httpx==0.28.1" \
+                      "scikit-learn==1.9.0"
+
+      # No data/ in CI and no Kaggle credentials: the suite runs entirely off the
+      # committed fixtures in tests/fixtures/, and dataset-dependent tests are
+      # marked needs_data and skip.
+      - name: Run tests
+        run: |
+          pytest -v \
+            --junitxml=pytest-results.xml \
+            --cov=src --cov=api \
+            --cov-report=term-missing \
+            --cov-report=xml
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Test results"
+            echo ""
+            if [ -f pytest-results.xml ]; then
+              python - <<'PY'
+          import xml.etree.ElementTree as ET
+          r = ET.parse("pytest-results.xml").getroot()
+          s = r if r.tag == "testsuite" else r.find("testsuite")
+          t = int(s.get("tests", 0)); f = int(s.get("failures", 0))
+          e = int(s.get("errors", 0)); k = int(s.get("skipped", 0))
+          print(f"- **{t - f - e - k} passed**, {f} failed, {e} errors, {k} skipped")
+          print(f"- duration: {float(s.get('time', 0)):.1f}s")
+          PY
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test + coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            pytest-results.xml
+            coverage.xml
+          retention-days: 14
+
+  build:
+    name: Build image
+    needs: [lint, test]          # a red test must SKIP this, not run beside it
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (load into the local daemon, do not push)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: catdog-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # An image nobody ran is not evidence it works. Hand it to the next job.
+      - name: Export image for downstream jobs
+        run: docker save catdog-api:ci -o /tmp/catdog-api.tar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-tar
+          path: /tmp/catdog-api.tar
+          retention-days: 1
+
+      - name: Record image size
+        run: |
+          SIZE=$(docker image inspect catdog-api:ci --format '{{.Size}}')
+          echo "### Image" >> "$GITHUB_STEP_SUMMARY"
+          echo "- size: $(numfmt --to=iec "$SIZE")" >> "$GITHUB_STEP_SUMMARY"
+
+  image-smoke:
+    name: Smoke test the image
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4     # needed for the fixture images
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-tar
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/catdog-api.tar
+
+      - name: Start container
+        run: docker run -d -p 8000:8000 --name catdog catdog-api:ci
+
+      # TensorFlow start-up is slow, so poll rather than sleeping a fixed guess.
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::container never became healthy"
+          docker logs catdog
+          exit 1
+
+      # The assertion that matters: a real cat image must come back as "cat".
+      # A container that boots but mispredicts is a failure, and only checking
+      # HTTP 200 would let that through.
+      - name: Predict a known cat
+        run: |
+          RESP=$(curl -sf -F "file=@tests/fixtures/cat_sample.jpg" \
+                   http://localhost:8000/predict)
+          echo "response: $RESP"
+          echo "$RESP" | python -c "
+          import json,sys
+          r = json.load(sys.stdin)
+          assert r['label'] == 'cat', f\"expected cat, got {r}\"
+          assert r['probabilities']['cat'] > 0.5, r
+          print('OK: cat correctly classified, confidence', r['confidence'])
+          "
+
+      - name: Predict a known dog
+        run: |
+          RESP=$(curl -sf -F "file=@tests/fixtures/dog_sample.jpg" \
+                   http://localhost:8000/predict)
+          echo "response: $RESP"
+          echo "$RESP" | python -c "
+          import json,sys
+          r = json.load(sys.stdin)
+          assert r['label'] == 'dog', f\"expected dog, got {r}\"
+          print('OK: dog correctly classified, confidence', r['confidence'])
+          "
+
+      - name: Reject a corrupt image with 422
+        run: |
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+                   -F "file=@tests/fixtures/corrupt.jpg" \
+                   http://localhost:8000/predict)
+          echo "status: $CODE"
+          [ "$CODE" = "422" ] || { echo "::error::expected 422, got $CODE"; exit 1; }
+
+      - name: Check /metrics is exposed
+        run: curl -sf http://localhost:8000/metrics | grep -q catdog_predictions_total
+
+      - name: Container logs
+        if: always()
+        run: docker logs catdog || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f catdog || true
+
+  security:
+    name: Trivy scan
+    needs: build
+    runs-on: ubuntu-latest
+    # Advisory: a CVE in the TensorFlow base image should be visible, but it
+    # should not block coursework delivery. exit-code stays 0 deliberately.
+    continue-on-error: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-tar
+          path: /tmp
+
+      - run: docker load -i /tmp/catdog-api.tar
+
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: catdog-api:ci
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          output: trivy-report.txt
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Trivy (HIGH/CRITICAL)"
+            echo '```'
+            head -60 trivy-report.txt 2>/dev/null || echo "no report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-report
+          path: trivy-report.txt
+
+  publish:
+    name: Publish to GHCR
+    # Gated behind the smoke test, not just the build: nothing is published until
+    # the image has been proven to serve correct predictions.
+    needs: [image-smoke]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write            # required for ghcr.io, uses GITHUB_TOKEN (ADR-006)
+    outputs:
+      image_sha_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # SHA tag *and* latest. The SHA tag is what makes GitOps possible: `latest`
+      # cannot express "deploy this build", so k8s/deployment.yaml pins the SHA
+      # and every rollout is traceable to a commit (Guardrail Rule 7).
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published"
+            echo ""
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

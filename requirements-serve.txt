@@ -10,13 +10,26 @@
 # requirements.txt exactly. A skew there can fail to load models/model.h5 or
 # silently shift predictions, and audit check 14 fails the build if they diverge.
 #
-# Why tensorflow-cpu and not tensorflow: the image targets linux/amd64, where
-# tensorflow-cpu is the smaller CPU-only build. It stops at 2.20.0 on PyPI, which
-# is exactly why requirements.txt pins tensorflow==2.20.0 rather than the newer
-# 2.21.0 — verified on Day 1. Audit check 15 asserts this version actually exists.
+# The TensorFlow line is architecture-conditional, and this is not premature
+# generality — it is a bug fixed the hard way. `tensorflow-cpu` is published for
+# **linux/amd64 only**; there is no arm64 Linux wheel. On an Apple Silicon host
+# `docker build` defaults to linux/arm64, so a plain `tensorflow-cpu` pin fails
+# with "from versions: none" — which reads like a bad pin but is really a wrong
+# architecture. Verified against PyPI:
+#
+#   tensorflow-cpu==2.20.0   manylinux2014_aarch64  -> NOT available
+#   tensorflow-cpu==2.20.0   manylinux2014_x86_64   -> available
+#   tensorflow==2.20.0       manylinux2014_aarch64  -> available
+#   tensorflow==2.20.0       manylinux2014_x86_64   -> available
+#
+# So: prefer the smaller CPU-only build on amd64 (CI runners, GHCR image), and
+# fall back to full `tensorflow` on arm64 (local Minikube on this Mac). Both pin
+# 2.20.0, so the version the model was trained with is unchanged either way and
+# audit check 14 still passes.
 
 # --- Inference-critical: must match requirements.txt ---
-tensorflow-cpu==2.20.0
+tensorflow-cpu==2.20.0; platform_machine == "x86_64"
+tensorflow==2.20.0; platform_machine == "aarch64" or platform_machine == "arm64"
 keras==3.15.1
 numpy==2.4.6
 pillow==12.3.0
