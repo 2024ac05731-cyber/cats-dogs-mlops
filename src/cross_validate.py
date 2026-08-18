@@ -189,7 +189,10 @@ def run_fold(arch: str, fold: int, n_folds: int, tr_idx, va_idx, paths, labels,
                           batch_size=batch_size, augment=False, shuffle=False)
 
     t0 = time.perf_counter()
-    model.fit(train_ds, validation_data=val_ds, epochs=epochs, verbose=0)
+    # shuffle=False: the tf.data pipeline already shuffles; Keras's default of
+    # True only emits a warning that it is ignoring the argument.
+    model.fit(train_ds, validation_data=val_ds, epochs=epochs,
+              shuffle=False, verbose=0)
     elapsed = time.perf_counter() - t0
 
     proba = model.predict(val_ds, verbose=0).ravel()

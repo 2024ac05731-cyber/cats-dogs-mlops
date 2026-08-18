@@ -2,6 +2,8 @@
 
 **Total marks: 50** | **Earned (self-assessed): _ / 50**
 
+**Last synced:** 2026-08-18 (Days 1-3 complete + audited; Day 4 CV run in progress). Only independently verified items are ticked — see `tracker/DAILY_LOG.md` for the evidence behind each.
+
 Maps each of the 5 graded modules to deliverables, file paths, and the days they're worked on.
 Update the **Status** and **Self-score** columns weekly.
 
@@ -15,25 +17,25 @@ Status legend: `[ ]` not started | `[/]` in progress | `[x]` done | `[~]` partia
 ---
 
 ## M1 — Model Development & Experiment Tracking — 10 marks
-**Status:** `[ ]` | **Self-score:** _ / 10 | **Days:** 1-7
+**Status:** `[/]` | **Self-score:** _ / 10 | **Days:** 1-7
 
 ### 1. Data & Code Versioning
-- [ ] Git for source versioning — repo `cats-dogs-mlops`, meaningful commit history, `main` branch
-- [ ] DVC initialised (`dvc init`), remote configured (local filesystem — ADR-004)
-- [ ] Raw dataset tracked (`data/raw.dvc`), **not** committed as blobs
-- [ ] Pre-processed data tracked (`data/processed.dvc` or a `dvc.yaml` stage output)
-- [ ] `dvc.yaml` pipeline with reproducible stages (download → preprocess → train)
+- [x] Git for source versioning — repo `cats-dogs-mlops`, meaningful commit history, `main` branch
+- [x] DVC initialised (`dvc init`), remote configured (local filesystem — ADR-004)
+- [x] Raw dataset tracked (`data/raw.dvc`), **not** committed as blobs
+- [x] Pre-processed data tracked (`data/processed.dvc` or a `dvc.yaml` stage output)
+- [x] `dvc.yaml` pipeline with reproducible stages (download → preprocess → train)
 - [ ] `dvc repro` runs clean on a fresh clone + `dvc pull`
-- [ ] `.dvc/config`, `dvc.lock`, and `*.dvc` files committed
+- [x] `.dvc/config`, `dvc.lock`, and `*.dvc` files committed
 
 ### 2. Model Building
-- [ ] Pre-processing to 224x224 RGB (`src/preprocess.py`)
-- [ ] Stratified 80/10/10 train/val/test split, seed fixed at 42, split manifests written
-- [ ] Data augmentation (flip / rotation / zoom / contrast) applied to train only
-- [ ] Baseline CNN implemented (`src/model.py::build_baseline_cnn()`)
-- [ ] Second model for comparison — MobileNetV2 transfer learning (`build_transfer_model()`)
-- [ ] Trained model saved in a standard serialized format (`models/model.h5`)
-- [ ] `models/model_metadata.json` sidecar: versions, hyperparameters, input shape, class map, metrics
+- [x] Pre-processing to 224x224 RGB (`src/preprocess.py`)
+- [x] Stratified 80/10/10 train/val/test split, seed fixed at 42, split manifests written
+- [x] Data augmentation (flip / rotation / zoom / contrast) applied to train only
+- [x] Baseline CNN implemented (`src/model.py::build_baseline_cnn()`)
+- [x] Second model for comparison — MobileNetV2 transfer learning (`build_transfer_model()`)
+- [x] Trained model saved in a standard serialized format (`models/model.h5`)
+- [x] `models/model_metadata.json` sidecar: versions, hyperparameters, input shape, class map, metrics
 
 ### 3. Experiment Tracking
 - [ ] MLflow integrated (`mlflow.set_experiment` + `mlflow.start_run`)
@@ -44,7 +46,7 @@ Status legend: `[ ]` not started | `[/]` in progress | `[x]` done | `[~]` partia
 - [ ] All runs visible in the UI, 5+ screenshots captured
 
 ### 4. Cross-validation **`[GAP-CV]`** — the mark lost in A1
-- [ ] `src/cross_validate.py` — hand-rolled stratified k-fold (k=5), model rebuilt **and
+- [x] `src/cross_validate.py` — hand-rolled stratified k-fold (k=5), model rebuilt **and
       recompiled** per fold so no weight leaks across folds (ADR-003)
 - [ ] Per-fold metrics printed AND logged as separate nested MLflow runs (`fold_1` … `fold_5`)
 - [ ] `reports/cv_results.csv` — one row per fold per model, plus mean and std rows
@@ -97,10 +99,10 @@ Status legend: `[ ]` not started | `[/]` in progress | `[x]` done | `[~]` partia
 ---
 
 ## M3 — CI Pipeline for Build, Test & Image Creation — 10 marks
-**Status:** `[ ]` | **Self-score:** _ / 10 | **Days:** 11-14
+**Status:** `[/]` | **Self-score:** _ / 10 | **Days:** 11-14
 
 ### 1. Automated Testing
-- [ ] Unit tests for a **data pre-processing function** — `tests/test_preprocess.py`
+- [x] Unit tests for a **data pre-processing function** — `tests/test_preprocess.py`
       (resize to 224x224, channel order, normalization range, split ratios + stratification,
       corrupt-image handling, augmentation only on train)
 - [ ] Unit tests for a **model utility / inference function** — `tests/test_model.py`
@@ -108,8 +110,8 @@ Status legend: `[ ]` not started | `[/]` in progress | `[x]` done | `[~]` partia
       summing to 1, deterministic given a seed)
 - [ ] API tests — `tests/test_api.py` via `TestClient` (health 200, predict on a fixture image,
       bad content-type 422, missing file 422)
-- [ ] Test fixtures committed: `tests/fixtures/cat_sample.jpg`, `dog_sample.jpg`, `corrupt.jpg`
-- [ ] `pytest -v` green locally; `pytest.ini` + root `conftest.py` in place
+- [x] Test fixtures committed: `tests/fixtures/cat_sample.jpg`, `dog_sample.jpg`, `corrupt.jpg`
+- [x] `pytest -v` green locally; `pytest.ini` + root `conftest.py` in place
 - [ ] Coverage measured and reported (`pytest --cov=src --cov=api`)
 
 ### 2. CI Setup — GitHub Actions **`[GAP-CICD]`**

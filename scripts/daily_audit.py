@@ -488,11 +488,27 @@ def _36():
     return ok("remote" in cfg and "url" in cfg, "remote set", "no remote in .dvc/config")
 
 
-@check(37, "DATA", "Raw data tracked by DVC", 2)
+@check(37, "DATA", "Raw dataset tracked by DVC (M1 requires dataset versioning)", 2)
 def _37():
-    found = list(ROOT.glob("data/*.dvc")) + list(ROOT.glob("*.dvc"))
-    return ok(bool(found) or "outs" in read("dvc.yaml"),
-              f"{len(found)} .dvc file(s)", "no .dvc files and no dvc.yaml outs")
+    """Requires an actual .dvc file for the raw data, not just dvc.yaml outputs.
+
+    This check originally accepted `"outs" in dvc.yaml` as proof and passed for
+    days while data/raw was completely unversioned — dvc.yaml only tracked the
+    processed manifests and the model. M1 asks for DVC on the **dataset** and the
+    pre-processed data, so both have to be verified separately.
+    """
+    dvc_files = list(ROOT.glob("data/*.dvc")) + list(ROOT.glob("*.dvc"))
+    raw_tracked = any("raw" in p.name for p in dvc_files)
+    lock = read("dvc.lock")
+    processed_tracked = "data/processed" in lock
+
+    if not raw_tracked:
+        return (FAIL, "no data/raw.dvc — run `dvc add data/raw`. "
+                      f"dvc.yaml outputs alone don't version the dataset "
+                      f"(found .dvc files: {[p.name for p in dvc_files] or 'none'})")
+    return ok(processed_tracked,
+              f"raw tracked ({[p.name for p in dvc_files]}) + processed in dvc.lock",
+              "raw tracked but data/processed missing from dvc.lock")
 
 
 @check(38, "DATA", "dvc.yaml declares pipeline stages", 3)

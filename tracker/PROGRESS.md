@@ -1,6 +1,6 @@
 # 10-Day Progress Dashboard (compressed)
 
-**Overall:** 0/10 days complete (0%) | **Last updated:** 2026-08-15 (Day 1 in progress — structure + venv done)
+**Overall:** 3/10 days complete (30%) | **Last updated:** 2026-08-18 (Days 1-3 done and audited; Day 4 CV running)
 
 Status legend: `[ ]` not started | `[/]` in progress | `[x]` done | `[!]` blocked | `[~]` deferred
 
@@ -31,8 +31,9 @@ auto-deploy, the post-deploy smoke gate, rollback, and every red-path demonstrat
 
 ## Day 1 — Skeleton, Environment, Data Acquisition & Audit
 *(was Days 1–2)*
-- **Status:** [/]
-- **Time estimate:** ~5 h
+- **Status:** [x]
+- **Date completed:** 2026-08-18
+- **Time estimate:** ~5 h (actual ~5 h across sessions)
 - **Goal:** Repo scaffolded, TF verified, dataset on disk and audited.
 
 **Sub-tasks:**
@@ -42,37 +43,37 @@ auto-deploy, the post-deploy smoke gate, rollback, and every red-path demonstrat
 - [x] `git init -b main`, `commit.gpgsign=false` set locally (A1 friction, pre-empted)
 - [x] venv created with Python 3.11 (`/opt/homebrew/bin/python3.11`)
 - [x] Kaggle token installed — `KGAT_` format at `~/.kaggle/access_token`, mode 600
-- [/] **Resolve the TensorFlow wheel question before pinning** — install `tensorflow` on macOS
+- [x] **Resolve the TensorFlow wheel question before pinning** — install `tensorflow` on macOS
       arm64, record the exact version, then confirm a matching `tensorflow-cpu` minor version exists
       for linux/amd64 (`requirements-serve.txt`). ADR-002
-- [ ] Record numpy + Pillow versions TF resolved to — these are the pins that must match across both
+- [x] Record numpy + Pillow versions TF resolved to — these are the pins that must match across both
       requirements files
-- [ ] `.gitignore` (Python, `.venv`, `mlruns/`, `data/raw/`, `data/processed/`, `models/*.h5` with a
+- [x] `.gitignore` (Python, `.venv`, `mlruns/`, `data/raw/`, `data/processed/`, `models/*.h5` with a
       `!models/model.h5` exception, OS junk, `.dvc/cache`, **`access_token`, `kaggle.json`,
       `.kaggle/`**)
-- [ ] `.python-version` (3.11), `ruff.toml`, `pytest.ini`, root `conftest.py`
-- [ ] Starter `requirements.txt` with everything pinned to what actually resolved
-- [ ] `README.md` skeleton: stack table, structure, setup
-- [ ] **Confirm kaggle.com is reachable from this machine** — a managed-network proxy may block it.
+- [x] `.python-version` (3.11), `ruff.toml`, `pytest.ini`, root `conftest.py`
+- [x] Starter `requirements.txt` with everything pinned to what actually resolved
+- [x] `README.md` skeleton: stack table, structure, setup
+- [x] **Confirm kaggle.com is reachable from this machine** — a managed-network proxy may block it.
       Test with `kaggle datasets files bhavikjikadara/dog-and-cat-classification-dataset`. If
       blocked → one-time browser download + `scripts/download.sh` ingesting a local archive
       (record as ADR-016)
-- [ ] Accept the dataset terms in a browser once (API returns 403 until you do)
-- [ ] `scripts/download.sh` — idempotent, `DATA_FORCE=1` to refetch
-- [ ] `src/data.py` — path constants, `RANDOM_STATE = 42`, `IMG_SIZE = (224, 224)`,
+- [x] Accept the dataset terms in a browser once (API returns 403 until you do)
+- [x] `scripts/download.sh` — idempotent, `DATA_FORCE=1` to refetch
+- [x] `src/data.py` — path constants, `RANDOM_STATE = 42`, `IMG_SIZE = (224, 224)`,
       `CLASS_NAMES = ["cat", "dog"]`, `download_data()`, `inspect()`
-- [ ] Record the **actual** archive layout (don't assume — this dataset has been republished in
+- [x] Record the **actual** archive layout (don't assume — this dataset has been republished in
       more than one shape) and the real per-class counts
-- [ ] **Corrupt-image audit** — walk every file, verify with Pillow, write `data/corrupt_files.txt`
+- [x] **Corrupt-image audit** — walk every file, verify with Pillow, write `data/corrupt_files.txt`
       with a count. This dataset family is known for truncated JPEGs
-- [ ] GitHub repo `cats-dogs-mlops` created; remote added; first commit pushed
-- [ ] PAT has the `workflow` scope (A1 friction — needed before Day 7)
+- [x] GitHub repo `cats-dogs-mlops` created; remote added; first commit pushed
+- [x] PAT has the `workflow` scope (A1 friction — needed before Day 7)
 
 **Verification:**
-- [ ] `import tensorflow` works; version recorded
-- [ ] Class counts + corrupt count written into the `src/data.py` docstring
-- [ ] Re-running the download is idempotent
-- [ ] Repo visible on GitHub
+- [x] `import tensorflow` works — 2.20.0 / keras 3.15.1 (pinned to match `tensorflow-cpu`, ADR-002)
+- [x] Real counts recorded: 24,998 files, 24,997 usable, 1 corrupt (`Dog/9041.jpg`, truncated)
+- [x] Re-running the download is idempotent; `.synthetic` marker prevents fixture/real confusion
+- [x] Repo live at github.com/2024ac05731-cyber/cats-dogs-mlops
 
 **Risk:** the Kaggle connectivity check is the gate for the whole plan. Do it first, not last.
 
@@ -80,31 +81,32 @@ auto-deploy, the post-deploy smoke gate, rollback, and every red-path demonstrat
 
 ## Day 2 — DVC, Preprocessing, Splits
 *(was Days 3–4)*
-- **Status:** [ ]
-- **Time estimate:** ~6 h
+- **Status:** [x]
+- **Date completed:** 2026-08-18
+- **Time estimate:** ~6 h (actual ~4 h)
 - **Goal:** Data versioned, 224x224 pipeline, stratified 80/10/10, augmentation working.
 
 **Sub-tasks:**
-- [ ] `dvc init`; local-filesystem remote (`dvc remote add -d localremote ~/dvc-store/cats-dogs`) — ADR-004
-- [ ] `dvc add data/raw`; commit `data/raw.dvc`; `dvc push`
-- [ ] `dvc.yaml` with `preprocess` and `train` stages; declare metrics/plots; commit `dvc.lock`
-- [ ] `src/preprocess.py::load_image()` — decode, force RGB (kills greyscale/alpha surprises),
+- [x] `dvc init`; local-filesystem remote (`dvc remote add -d localremote ~/dvc-store/cats-dogs`) — ADR-004
+- [x] `dvc add data/raw`; commit `data/raw.dvc`; `dvc push`
+- [x] `dvc.yaml` with `preprocess` and `train` stages; declare metrics/plots; commit `dvc.lock`
+- [x] `src/preprocess.py::load_image()` — decode, force RGB (kills greyscale/alpha surprises),
       resize 224x224, scale to [0,1]
-- [ ] `build_split_manifests()` — stratified 80/10/10, seed 42, writes
+- [x] `build_split_manifests()` — stratified 80/10/10, seed 42, writes
       `data/processed/{train,val,test}.csv`; **excludes the Day-1 corrupt list at manifest level**
-- [ ] `make_dataset(manifest, augment=False)` → batched, prefetched `tf.data.Dataset`
-- [ ] Augmentation as Keras layers (`RandomFlip`, `RandomRotation`, `RandomZoom`, `RandomContrast`),
+- [x] `make_dataset(manifest, augment=False)` → batched, prefetched `tf.data.Dataset`
+- [x] Augmentation as Keras layers (`RandomFlip`, `RandomRotation`, `RandomZoom`, `RandomContrast`),
       **train only**
-- [ ] 3 essential figures: `class_balance.png`, `sample_grid.png`, `augmentation_grid.png`
-- [ ] `notebooks/01_eda.ipynb` — thin driver calling the above (M1 wants notebooks under Git)
-- [ ] `dvc repro preprocess`; commit
+- [x] 3 essential figures: `class_balance.png`, `sample_grid.png`, `augmentation_grid.png`
+- [x] `notebooks/01_eda.ipynb` — thin driver calling the above (M1 wants notebooks under Git)
+- [x] `dvc repro preprocess`; commit
 
 **Verification:**
-- [ ] Batch is `(batch, 224, 224, 3)` float32 in [0,1]
-- [ ] Class balance within ~1% across all three splits
-- [ ] **No file in more than one split** — assert it
-- [ ] Augmentation provably absent from val/test
-- [ ] `dvc status` clean; no large blobs in `git status`
+- [x] Batch is `(batch, 224, 224, 3)` float32 in [0,1]
+- [x] Class balance within ~1% across all three splits
+- [x] **No file in more than one split** — assert it
+- [x] Augmentation provably absent from val/test
+- [x] `dvc status` clean; no large blobs in `git status`
 
 **Note:** write these assertions so they lift straight into Day 7's `test_preprocess.py`.
 
@@ -112,38 +114,46 @@ auto-deploy, the post-deploy smoke gate, rollback, and every red-path demonstrat
 
 ## Day 3 — Two Architectures + Training
 *(was Day 5)*
-- **Status:** [ ]
-- **Time estimate:** ~5 h
+- **Status:** [x]
+- **Date completed:** 2026-08-18
+- **Time estimate:** ~5 h (actual ~4 h)
 - **Goal:** Both models train; measured epoch time sizes the Day 4 CV budget.
 
 **Sub-tasks:**
-- [ ] `src/model.py::build_baseline_cnn()` — own architecture (Conv/BN/Pool → GAP → Dense →
+- [x] `src/model.py::build_baseline_cnn()` — own architecture (Conv/BN/Pool → GAP → Dense →
       sigmoid), choices documented in the docstring (ADR-009)
-- [ ] `src/model.py::build_transfer_model()` — MobileNetV2, ImageNet weights, frozen base, custom
+- [x] `src/model.py::build_transfer_model()` — MobileNetV2, ImageNet weights, frozen base, custom
       head. Chosen partly *because* it converges fast enough to cross-validate (ADR-003)
-- [ ] `src/train.py` — `--model {baseline,transfer}`, `--epochs`; trains on train, validates on val,
+- [x] `src/train.py` — `--model {baseline,transfer}`, `--epochs`; trains on train, validates on val,
       evaluates on test
-- [ ] Callbacks: `EarlyStopping`, `ReduceLROnPlateau`, `ModelCheckpoint`
-- [ ] Test metrics: accuracy, precision, recall, F1, ROC-AUC
-- [ ] Figures: `loss_curves.png`, `accuracy_curves.png`, `confusion_matrix.png`, `roc_curve.png`
-- [ ] Save `models/model.h5` + `models/model_metadata.json` (versions, hyperparameters, input shape,
+- [x] Callbacks: `EarlyStopping`, `ReduceLROnPlateau`, `ModelCheckpoint`
+- [x] Test metrics: accuracy, precision, recall, F1, ROC-AUC
+- [x] Figures: `loss_curves.png`, `accuracy_curves.png`, `confusion_matrix.png`, `roc_curve.png`
+- [x] Save `models/model.h5` + `models/model_metadata.json` (versions, hyperparameters, input shape,
       class map, metrics)
-- [ ] **Record wall-clock per epoch for both architectures** — this decides Day 4's protocol
+- [x] **Record wall-clock per epoch for both architectures** — this decides Day 4's protocol
 
 **Verification:**
-- [ ] Both train without OOM or NaN loss
-- [ ] Test accuracy clearly beats 50% chance
-- [ ] `keras.models.load_model('models/model.h5')` reloads and scores identically
-- [ ] Per-epoch time logged in `DAILY_LOG.md`
+- [x] Both train without OOM or NaN loss
+- [x] Test accuracy clearly beats 50% chance
+- [x] `keras.models.load_model('models/model.h5')` reloads and scores identically
+- [x] Per-epoch time logged in `DAILY_LOG.md`
 
-**Decision point:** from the measured epoch time, fix the Day 4 CV protocol — subset size and epochs
-per fold. Write it down before running.
+**Actual results (2026-08-18):**
+- baseline CNN: 242,369 params (241,665 trainable); transfer: 2,259,265 params (1,281 trainable —
+  base correctly frozen)
+- Validated fit (baseline, 4k subset, 12 epochs): accuracy 0.7180, precision 0.6799, recall 0.8240,
+  F1 0.7450, ROC-AUC 0.8129. Saved artifact independently re-verified at 0.7250 on 80 real test images.
+- **Per-epoch wall-clock: 40.9 s at 4,000 images (~10 ms/image); ~3.4 min on the full 19,997 split.**
+
+**Decision point → DECIDED:** 5-fold CV on a ~4,000-image random stratified subset (~41 min) rather
+than the full pool (~5.7 h). Documented in `src/cross_validate.py`, ADR-005, and the README.
 
 ---
 
 ## Day 4 — 5-Fold Cross-Validation **`[GAP-CV]` — PROTECTED DAY**
 *(was Day 6 — unchanged in scope)*
-- **Status:** [ ]
+- **Status:** [/] src/cross_validate.py written, validated, committed; full run in progress
 - **Time estimate:** ~6 h including training wall-clock
 - **Goal:** Cross-validation a grader cannot miss.
 
