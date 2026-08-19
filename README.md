@@ -8,11 +8,13 @@ CD continuous deployment onto Kubernetes, and Prometheus/Grafana monitoring.
 
 Built for AIMLCZG523 Assignment 2 at BITS Pilani.
 
-**Repository:** _add the GitHub URL once the remote is created_
+**Repository:** https://github.com/2024ac05731-cyber/cats-dogs-mlops
 
-**Demo video:** _add the link here (Day 10)_
+**Demo video:** _link added after recording (Day 10)_
 
 ## Stack
+
+[![CI](https://github.com/2024ac05731-cyber/cats-dogs-mlops/actions/workflows/ci.yml/badge.svg)](https://github.com/2024ac05731-cyber/cats-dogs-mlops/actions/workflows/ci.yml)
 
 | Layer               | Tool                                  |
 |---------------------|---------------------------------------|
@@ -140,9 +142,92 @@ under drifted dependencies is caught rather than shipped.
 All timings are CPU (Apple M4 Pro). No GPU was used — `tensorflow-metal` is incompatible with
 TensorFlow 2.20 (ADR-011).
 
+## How this maps to the rubric
+
+Every graded item with the exact path that satisfies it. If you have five minutes and a
+rubric, start here.
+
+### M1 — Model Development & Experiment Tracking (10)
+
+| Requirement | Where |
+|---|---|
+| Git for source versioning | this repo, [commit history](../../commits/main) |
+| DVC for dataset versioning | [`data/raw.dvc`](data/raw.dvc) (24,998 files, 848 MB), [`.dvc/config`](.dvc/config) |
+| DVC tracks pre-processed data | [`dvc.yaml`](dvc.yaml) `preprocess` stage → `data/processed/{train,val,test}.csv`, [`dvc.lock`](dvc.lock) |
+| Reproducible pipeline | `dvc repro` — 3 stages: `preprocess`, `train`, `cross_validate` |
+| 224×224 RGB pre-processing | [`src/preprocess.py`](src/preprocess.py) `load_image()` |
+| Stratified 80/10/10 split | `build_split_manifests()` — 19,997 / 2,499 / 2,501, all 50.0 % dog, provably disjoint |
+| Data augmentation | `build_augmentation()` — flip/rotation/zoom/contrast, clipped, **train only** |
+| Baseline model | [`src/model.py`](src/model.py) `build_baseline_cnn()` — 242,369 params |
+| Second model | `build_transfer_model()` — MobileNetV2, frozen base, 1,281 trainable |
+| Serialized model | [`models/model.h5`](models/model.h5) + [`model_metadata.json`](models/model_metadata.json) |
+| **Cross-validation** | [`src/cross_validate.py`](src/cross_validate.py), [`reports/cv_results.csv`](reports/cv_results.csv) (10 per-fold rows), [2 figures](reports/figures), [§ Cross-validation](#cross-validation) |
+| MLflow: runs, params, metrics | `mlruns/`, `bash scripts/mlflow_ui.sh` — 2 parent CV runs + 10 nested `fold_N` runs |
+| MLflow artifacts | confusion matrix, loss curves, accuracy curves, ROC, `cv_results.csv` |
+
+### M2 — Model Packaging & Containerization (10)
+
+| Requirement | Where |
+|---|---|
+| REST API | [`api/main.py`](api/main.py) — FastAPI |
+| Health check endpoint | `GET /health` → `{"status":"ok","model_loaded":true}` |
+| Prediction endpoint | `POST /predict` (multipart), `POST /predict/base64` |
+| Returns class probabilities + label | `{"label":"cat","probabilities":{"cat":0.999999,"dog":1e-6},...}` |
+| Dependencies + version pinning | [`requirements.txt`](requirements.txt), [`requirements-serve.txt`](requirements-serve.txt) — all `==` pinned |
+| Dockerfile | [`Dockerfile`](Dockerfile) — slim base, non-root `appuser`, `HEALTHCHECK` |
+| Built and verified locally | 428 MB content; healthy in 4 s; cat→`cat` @0.999999, dog→`dog` @0.999874, corrupt→`422` |
+
+### M3 — CI Pipeline (10)
+
+| Requirement | Where |
+|---|---|
+| Unit test: pre-processing function | [`tests/test_preprocess.py`](tests/test_preprocess.py) — 22 tests |
+| Unit test: model/inference function | [`tests/test_model.py`](tests/test_model.py) — 19 tests |
+| API tests | [`tests/test_api.py`](tests/test_api.py) — 23 tests. **64 total** |
+| CI on every push / PR | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — 6 jobs |
+| Checkout, install, test, build | jobs `lint` → `test` → `build`, gated by `needs:` |
+| Push to a container registry | job `publish` → `ghcr.io/2024ac05731-cyber/catdog-api`, **SHA + `latest`**, multi-arch |
+
+### M4 — CD Pipeline & Deployment (10)
+
+| Requirement | Where |
+|---|---|
+| Deployment target manifests | [`k8s/deployment.yaml`](k8s/deployment.yaml), [`k8s/service.yaml`](k8s/service.yaml) |
+| Pull new image from registry | `imagePullPolicy` + SHA-tagged GHCR image |
+| Auto-deploy on main changes | [`argocd/application.yaml`](argocd/application.yaml) (auto-sync, prune, selfHeal) + [`cd.yml`](.github/workflows/cd.yml) `gitops-bump` |
+| Post-deploy smoke test | [`scripts/smoke_test_deployed.py`](scripts/smoke_test_deployed.py) — `/health` **and** a correct `/predict` |
+| Fail the pipeline if smoke fails | `cd.yml` job `verify`; exits non-zero → `kubectl rollout undo` |
+
+### M5 — Monitoring, Logs & Submission (10)
+
+| Requirement | Where |
+|---|---|
+| Request/response logging | `api/main.py` middleware — one JSON object per request |
+| Excluding sensitive data | logs byte size + 12-char SHA-256 prefix, **never image bytes**; asserted by `test_logs_never_contain_image_bytes` |
+| Request count | Prometheus `http_requests_total`, custom `catdog_predictions_total`, in-app counters on `GET /` |
+| Latency | `http_request_duration_seconds` histogram; measured p50 45 ms / p95 64 ms |
+| Monitoring stack | [`monitoring/README.md`](monitoring/README.md), [`grafana_dashboard.json`](monitoring/grafana_dashboard.json) (4 panels), [`k8s/servicemonitor.yaml`](k8s/servicemonitor.yaml) |
+| Post-deployment tracking | [`scripts/replay_batch.py`](scripts/replay_batch.py) → [`reports/post_deployment_report.md`](reports/post_deployment_report.md) |
+| Batch + true labels | `data/monitoring/labelled_batch/labels.csv` — held out from the test split |
+
+### Project management
+
+`tracker/` is a shipped deliverable, not scratch: [`GUARDRAILS.md`](tracker/GUARDRAILS.md) (why A1 lost
+marks and the rules preventing a repeat), [`DECISIONS.md`](tracker/DECISIONS.md) (12 ADRs),
+[`PROGRESS.md`](tracker/PROGRESS.md), [`TASKS.md`](tracker/TASKS.md), [`EVIDENCE.md`](tracker/EVIDENCE.md),
+[`DAILY_LOG.md`](tracker/DAILY_LOG.md).
+
+A 100-point audit enforces those rules mechanically — `python scripts/daily_audit.py --day 10`.
+
 ## Architecture
 
-_Diagram generated on Day 10 into `reports/figures/architecture_diagram.png`._
+![Architecture diagram](reports/figures/architecture_diagram.png)
+
+The seam that matters: **`models/model.h5` is the only thing crossing from training into
+serving**, and `src/preprocess.py::load_image` is shared by both, so train and serve cannot
+drift apart. A train/serve preprocessing skew leaves offline metrics untouched while quietly
+degrading live predictions — `scripts/replay_batch.py` exists to detect exactly that, and
+measured a +0.0076 delta (i.e. none).
 
 ## Project structure
 
@@ -242,22 +327,6 @@ python scripts/daily_audit.py --day 10 --only CONSISTENCY
 It fails non-zero on any active violation, and calls out failures on the two
 axes that lost marks on Assignment 1 (cross-validation visibility and CI/CD
 depth).
-
-## CI/CD
-
-_Populated on Days 7-9._
-
-## Deployment
-
-_Populated on Days 8-9._
-
-## Monitoring
-
-_Populated on Day 9._
-
-## How this maps to the rubric
-
-_Populated on Day 10 — every module mapped to the file paths that satisfy it._
 
 ## Author
 
