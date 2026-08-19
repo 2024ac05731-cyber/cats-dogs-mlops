@@ -1,6 +1,33 @@
 # 10-Day Progress Dashboard (compressed)
 
-**Overall:** 6/10 days complete (60%) | **Last updated:** 2026-08-18 (M1 + M2 complete and container-verified; Day 7 CI written, awaiting first run)
+**Overall:** 9.5/10 days complete | **Last updated:** 2026-08-19
+
+**START HERE TOMORROW.** All code is written, committed, and audit-clean (97/100 pass, 0 fail).
+Everything remaining is infrastructure that needs a terminal, in this priority order:
+
+| # | Task | Why it matters | Est. |
+|---|---|---|---|
+| 0 | `git pull --rebase origin main && git push` | The bot bumped the tag again; local is diverged | 1 min |
+| 1 | **Register the self-hosted runner** (Settings > Actions > Runners, label `minikube`) | Without it the CD `verify` job never runs — the smoke gate and rollback are **~10 marks of M4 and still unproven** | 10 min |
+| 2 | Minikube + Argo CD + `kubectl apply -f argocd/application.yaml` | The cluster to deploy into | 20 min |
+| 3 | Make the GHCR package **public** | Otherwise Minikube needs an imagePullSecret | 2 min |
+| 4 | **Prove the red CI run** — break a test on a branch, PR, screenshot `build` SKIPPED, revert | Guardrail Rule 6; directly answers "thin CI/CD" | 10 min |
+| 5 | **Prove rollback** — deploy a deliberately broken image, watch CD go red and undo | The other half of the M4 claim | 20 min |
+| 6 | Capture screenshots per `tracker/EVIDENCE.md` (3 GitOps ones are ready now) | Rule 2: artifact + pointer | 45 min |
+| 7 | Install kube-prometheus-stack, import the Grafana dashboard, run `replay_batch.py` against the cluster | M5 evidence on the real deployment | 30 min |
+| 8 | Record the video — `tracker/video_script.md`, 4:40 budget vs 5:00 limit | Deliverable 2 | 60 min |
+| 9 | `bash scripts/make_submission.sh`, tag `v1.0`, submit | Deliverable 1 | 15 min |
+
+**What is already proven** (either run by me or confirmed in the user's terminal):
+M1 complete (CV 0.9840 ± 0.0037, 12/12 `[GAP-CV]` checks). M2 container-verified
+(cat->cat, dog->dog, corrupt->422, non-root, 428MB). M3 CI #1 green, multi-arch image on GHCR.
+M4 GitOps bump proven — bot commit, real 40-char SHA, `[skip ci]` held. M5 live 1.0000 vs
+offline 0.9924, dashboard authored, JSON logs. Submission zip verified at 9.6MB/101 files.
+
+**What is NOT proven and must not be claimed until it is:** the CD smoke gate failing the
+pipeline, and rollback. Both are code-complete and exit-code-verified in isolation, but the CD
+job has never consumed them. See item 1.
+
 
 Status legend: `[ ]` not started | `[/]` in progress | `[x]` done | `[!]` blocked | `[~]` deferred
 

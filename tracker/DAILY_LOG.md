@@ -465,3 +465,42 @@ properly: exits 1 on failure, 0 on success. Nearly reported a working gate as br
 all screenshots, architecture diagram, README rubric map, video, zip.
 
 **Commits:** see `git log` (Days 5-9)
+
+---
+
+### 2026-08-19 — Day 10 (partial): rubric map, diagram, submission packager
+
+**Time spent:** ~2 h
+**Status:** all code complete and audit-clean; remaining work is infrastructure only
+
+**What I did:**
+- README `## How this maps to the rubric` — every M1-M5 item with the path that satisfies it.
+  This is Guardrail Rule 1 made concrete, and the direct fix for A1's invisible CV.
+- `reports/make_architecture_diagram.py` — generated from source so it cannot drift; boxes
+  coloured by rubric module, train->serve seam called out.
+- `tracker/video_script.md` — 4:40 shot list against the 5:00 limit, three beats marked
+  PROTECTED (cross-validation, code-change->CI, CD->prediction) with explicit guidance to cut
+  monitoring first if it overruns.
+- `scripts/make_submission.sh` — builds AND verifies the zip by extracting it and running the
+  suite against the extraction. Refuses to package a dirty tree, a missing model, or an
+  **untracked** model (the subtle one: the DVC remote is local, so an untracked model.h5 yields
+  a zip that looks complete and has no model).
+- Audit: all 100 checks now active — **97 pass, 0 fail, 3 manual**.
+
+**Known consequence of ADR-007, not a defect:** every human push now triggers
+CI -> publish -> CD -> bot tag-bump commit on `main`, so `git pull --rebase` is required before
+each subsequent push. Accepted rather than fixed: splitting the manifests into a separate config
+repo is the textbook remedy but is a restructure with a day of work left, and a bot regularly
+committing deploy records is itself the evidence that deployment is automated.
+
+**What didn't / open:**
+- **The CD smoke gate and rollback have never executed.** Verified in isolation (exits 1 on a
+  dead endpoint, 0 against the live container) but the CD `verify` job has never consumed them,
+  because no self-hosted runner is registered. This is ~10 marks of M4 and the single highest
+  priority tomorrow. Recorded as code-complete, NOT proven.
+- Red-CI screenshot (Rule 6) not yet captured.
+- Cluster-side M4/M5 evidence pending Minikube + Argo CD + kube-prometheus-stack.
+
+**Tomorrow:** see the priority table at the top of `PROGRESS.md`.
+
+**Commits:** 24 on main
