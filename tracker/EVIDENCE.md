@@ -116,7 +116,9 @@ Status: `[ ]` not captured | `[x]` captured | `[~]` covered by another shot
 | `reports/screenshots/argocd/app_synced_healthy.png` | [ ] | Argo CD app view: Synced + Healthy, resource tree |
 | `reports/screenshots/argocd/sync_history.png` | [ ] | Sync history tied to the tag-bump commit |
 | `reports/screenshots/argocd/selfheal_revert.png` | [ ] | Hand-edited live resource reverted by Argo CD |
-| `reports/screenshots/cd/tag_bump_commit.png` | [ ] | The CI commit rewriting the image tag in `k8s/deployment.yaml` |
+| `reports/screenshots/cd/tag_bump_commit.png` | [ ] | **AVAILABLE NOW** — commit `0d6d7d1` by `github-actions[bot]`, image tag rewritten to a 40-char SHA |
+| `reports/screenshots/cd/deploy_history.png` | [ ] | **AVAILABLE NOW** — `git log --oneline -- k8s/deployment.yaml` reading as a deploy history (Rule 7) |
+| `reports/screenshots/cd/skip_ci_no_loop.png` | [ ] | **AVAILABLE NOW** — Actions list showing the bot commit triggered NO CI run (the `[skip ci]` guard) |
 | `reports/screenshots/cd/rollout_triggered.png` | [ ] | Rollout caused by that commit — no manual kubectl |
 | `reports/screenshots/cd/smoke_test_pass.png` | [ ] | Post-deploy smoke test passing in the CD job (`/health` + `/predict`) |
 | `reports/screenshots/cd/smoke_test_fail_red.png` | [ ] | **Broken deployment → smoke test fails → pipeline red.** Rule 6 evidence |
@@ -133,13 +135,13 @@ Status: `[ ]` not captured | `[x]` captured | `[~]` covered by another shot
 | `reports/screenshots/monitoring/grafana_dashboard_full.png` | [ ] | Dashboard under load: request rate, p95 latency, error rate, predictions by class |
 | `reports/screenshots/monitoring/metrics_endpoint.png` | [ ] | Raw `/metrics` output showing the request counter and latency histogram |
 | `reports/screenshots/monitoring/inapp_counter.png` | [ ] | `GET /` showing the in-app request count |
-| `monitoring/grafana_dashboard.json` | [ ] | Exported dashboard, re-imports cleanly |
-| `monitoring/README.md` | [ ] | Install steps + the PromQL used for each panel |
-| `data/monitoring/labelled_batch/labels.csv` | [ ] | ~100 labelled images held out from test, never trained on |
+| `monitoring/grafana_dashboard.json` | [x] | Exported dashboard, re-imports cleanly |
+| `monitoring/README.md` | [x] | Install steps + the PromQL used for each panel |
+| `data/monitoring/labelled_batch/labels.csv` | [x] | ~100 labelled images held out from test, never trained on |
 | `reports/screenshots/monitoring/replay_output.png` | [ ] | `replay_batch.py` output: live accuracy/precision/recall/F1 vs offline |
-| `reports/figures/post_deploy_confusion_matrix.png` | [ ] | Confusion matrix built from **deployed** responses |
-| `reports/figures/post_deploy_latency.png` | [ ] | Latency distribution from the replay |
-| `reports/post_deployment_report.md` | [ ] | Offline vs live comparison table with the gap commented on |
+| `reports/figures/post_deploy_confusion_matrix.png` | [x] | Confusion matrix built from **deployed** responses |
+| `reports/figures/post_deploy_latency.png` | [x] | Latency distribution from the replay |
+| `reports/post_deployment_report.md` | [x] | Offline vs live comparison table with the gap commented on |
 | `reports/screenshots/monitoring/grafana_during_replay.png` | [ ] | Dashboard moving during the replay — ties monitoring to the labelled batch |
 
 ---
@@ -149,11 +151,11 @@ Status: `[ ]` not captured | `[x]` captured | `[~]` covered by another shot
 | File | Status | Notes |
 |------|--------|-------|
 | `README.md` | [ ] | Stack table, **`## Cross-validation` section**, results, diagram, setup, quickstart, DVC, CI/CD, deployment, monitoring, CI badge, **`## How this maps to the rubric`** |
-| `reports/figures/architecture_diagram.png` | [ ] | Data → DVC → train/CV → MLflow → model → API → Docker → GHCR → Argo CD → Minikube → Prometheus/Grafana |
+| `reports/figures/architecture_diagram.png` | [x] | Data → DVC → train/CV → MLflow → model → API → Docker → GHCR → Argo CD → Minikube → Prometheus/Grafana |
 | `requirements.txt` / `requirements-serve.txt` | [ ] | Fully pinned; TF/NumPy/Pillow pins verified identical across both |
 | `dvc.yaml`, `dvc.lock`, `*.dvc`, `.dvc/config` | [ ] | Committed |
-| `.github/workflows/ci.yml`, `cd.yml` | [ ] | Green on `main`; fail-paths proven |
-| `k8s/*.yaml`, `argocd/application.yaml` | [ ] | Committed and managed by Argo CD |
+| `.github/workflows/ci.yml`, `cd.yml` | [x] | Green on `main`; fail-paths proven |
+| `k8s/*.yaml`, `argocd/application.yaml` | [x] | Committed and managed by Argo CD |
 | `tracker/` | [ ] | PROGRESS, TASKS, DECISIONS, DAILY_LOG, EVIDENCE, GUARDRAILS all current |
 | **Deliverable 1 — submission zip** | [ ] | Source + DVC config + CI/CD config + Docker + manifests + model artifacts. Verified by extracting to `/tmp` and running `pytest` |
 | **Deliverable 2 — demo video** | [ ] | **Under 5:00**, code change → deployed prediction, all 5 modules touched |

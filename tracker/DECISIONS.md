@@ -446,6 +446,29 @@ the substantive difference between CI and CD. `prune` and `selfHeal` demonstrate
 something a deploy script cannot show. Reuses the Minikube experience from A1, so the cluster itself
 isn't new risk.
 
+**Outcome (2026-08-18, first real run):** the GitOps half works end to end.
+CI #1 went green in 13m 28s (six jobs, multi-arch image published to GHCR), and CD then
+committed:
+
+```
+0d6d7d1  deploy: catdog-api:2ee1581ae0e4 [skip ci]
+  author: github-actions[bot]
+  k8s/deployment.yaml: image -> ghcr.io/.../catdog-api:2ee1581ae0e452e398fef9c8377fb8e5fd495cd1
+```
+
+Three things that commit demonstrates, none of which A1 could show:
+1. a **real 40-char SHA tag** in the manifest, so `git log k8s/deployment.yaml` reads as a
+   deployment history (Rule 7);
+2. the **`[skip ci]` guard held** — the bot's commit triggered no CI run, so the
+   publish->bump->publish loop I designed against did not occur;
+3. **no human ran kubectl** — the deploy record is a commit.
+
+CD #1 failed first, in 12s, on my own bug: the bump step assigned `IMAGE` as a shell
+variable and read `os.environ["IMAGE"]` from a heredoc'd Python block. Fixed by declaring
+it in the step's `env:` block. Worth recording because the Day-8 "dry run" that was
+supposed to catch this tested the regex in a local Python process where the variable was
+already in scope — it never crossed the shell-to-Python boundary where the bug lived.
+
 **Consequences:**
 - A **self-hosted runner on the Mac is unavoidable**: GitHub-hosted runners cannot reach a local
   cluster, and the smoke gate must run against the real deployment.
