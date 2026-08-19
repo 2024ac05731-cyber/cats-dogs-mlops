@@ -68,3 +68,8 @@ id_rsa*
 
 # --- Logs ---
 *.log
+
+# --- Submission bundle (regenerable via scripts/make_submission.sh) ---
+# Deliberately not committed: it is a build output, and committing a 9.6MB zip
+# that contains the repo would double the repo on every rebuild.
+Assignment_2_*.zip
