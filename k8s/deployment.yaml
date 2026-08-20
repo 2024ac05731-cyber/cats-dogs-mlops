@@ -42,7 +42,7 @@ spec:
           # exists to prevent. An unresolvable tag fails loudly with
           # ImagePullBackOff instead, so "CD never ran" is impossible to mistake
           # for success.
-          image: ghcr.io/2024ac05731-cyber/catdog-api:6e35fc89241725986eeab0a2ce7bf29638eddcde
+          image: ghcr.io/2024ac05731-cyber/catdog-api:b092f146bfc4e09e58e31b08297b10489ef6117d
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
